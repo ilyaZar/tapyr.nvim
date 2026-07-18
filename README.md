@@ -2,7 +2,6 @@
 
 <p align="center">
   <a href="https://github.com/ilyaZar/tapyr.nvim/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/ilyaZar/tapyr.nvim/ci.yml?branch=main&style=flat-square&logo=github&logoColor=white&label=CI&labelColor=2a7e3b&color=1b5e2a"></a>
-  <a href="https://codecov.io/gh/ilyaZar/tapyr.nvim"><img src="https://img.shields.io/codecov/c/github/ilyaZar/tapyr.nvim/main?style=flat-square&logo=codecov&logoColor=white&labelColor=6b3fa0&color=4b2d73"></a>
   <a href="https://github.com/ilyaZar/tapyr.nvim/releases"><img src="https://img.shields.io/github/v/release/ilyaZar/tapyr.nvim?style=flat-square&label=version&labelColor=4a999d&color=346c6e"></a>
   <a href="https://neovim.io"><img src="https://img.shields.io/badge/Neovim-0.10+-3f7f52?style=flat-square&logo=neovim&logoColor=white&labelColor=57a143"></a>
   <a href="https://www.lua.org"><img src="https://img.shields.io/badge/Lua-LuaJIT-343476?style=flat-square&logo=lua&logoColor=white&labelColor=4c4c9d"></a>
