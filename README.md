@@ -1,8 +1,14 @@
 # tapyr.nvim
 
-`tapyr.nvim` keeps the usual Shiny for Python loop inside Neovim. It finds
+`tapyr.nvim` keeps the usual
+[Shiny for Python](https://shiny.posit.co/py/) loop inside Neovim. It finds
 projects from an `app.py` import, runs apps and tests through Overseer, and
 shows local apps in a small floating panel.
+
+It works with regular Shiny projects, including Appsilon's
+[Tapyr template](https://www.appsilon.com/rhinoverse/tapyr). See the Tapyr
+[documentation](https://appsilon.github.io/tapyr-docs/) and
+[template repository](https://github.com/Appsilon/tapyr-template).
 
 ## Requirements
 
