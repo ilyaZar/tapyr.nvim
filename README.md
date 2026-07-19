@@ -109,8 +109,10 @@ Inside the panel:
 
 Run `:checkhealth tapyr` to verify external dependencies.
 
-Tapyr selects the running task in Overseer without overriding its configured
-task-list layout or output strategy.
+Tapyr runs applications and tests through Overseer. Overseer's native bottom
+dock is the recommended layout because it keeps task status and the selected
+task's live output together. Tapyr selects the relevant task without taking
+focus from the source buffer and respects explicit Overseer configuration.
 
 ## Tracked apps
 

@@ -55,6 +55,11 @@ o                       Open the selected application URL.
 Enter                   Open a selected file in the Project view.
 q / Esc                 Close the panel.
 
+Tapyr runs applications and tests through Overseer. Overseer's native bottom
+dock is the recommended layout because it keeps task status and the selected
+task's live output together. Tapyr selects the relevant task without taking
+focus from the source buffer and respects explicit Overseer configuration.
+
 ==============================================================================
 4. Configuration                                         *tapyr-configuration*
 
