@@ -5,7 +5,6 @@ local messages = require("tapyr.messages")
 local tasks = require("tapyr.tasks")
 local text = require("tapyr.text")
 
-local uv = vim.uv or vim.loop
 local highlight_namespace = vim.api.nvim_create_namespace("tapyr.panel")
 
 local views = {
@@ -18,19 +17,19 @@ local project_items = {
   {
     kind = "task",
     name = "run app",
-    key = "Ctrl+b",
+    mapping = "run",
     command = tasks.describe("run"),
   },
   {
     kind = "task",
     name = "restart app",
-    key = "Ctrl+Shift+b",
+    mapping = "restart",
     command = tasks.describe("run"),
   },
   {
     kind = "task",
     name = "test app",
-    key = "Ctrl+t",
+    mapping = "test",
     command = tasks.describe("test"),
   },
   {
@@ -44,6 +43,24 @@ local project_items = {
     path = "pyproject.toml",
   },
 }
+
+local function mapping_label(mapping)
+  if not mapping then
+    return "-"
+  end
+
+  local key = mapping:match("^<C%-S%-(.)>$")
+  if key then
+    return "Ctrl+Shift+" .. key
+  end
+
+  key = mapping:match("^<C%-(.)>$")
+  if key then
+    return "Ctrl+" .. key
+  end
+
+  return mapping
+end
 
 local function view_bar(active)
   local parts = {}
@@ -78,11 +95,25 @@ local function footer()
 end
 
 local function title(root)
+  local project = vim.fs.basename(root or vim.uv.cwd())
   return {
     { " Tapyr ", "FloatTitle" },
-    { text.shorten(root or uv.cwd(), 52), "Comment" },
+    { text.shorten(project, 52), "Comment" },
     { " ", "FloatTitle" },
   }
+end
+
+local function project_label(project, root)
+  if not project then
+    return "-"
+  end
+  if project == root then
+    return vim.fs.basename(root)
+  end
+  if vim.startswith(project, root .. "/") then
+    return vim.fs.basename(root) .. project:sub(#root + 1)
+  end
+  return vim.fs.basename(project)
 end
 
 local function draw_apps(state)
@@ -98,12 +129,10 @@ local function draw_apps(state)
       .. " "
       .. text.column("pid", 8)
       .. " "
-      .. text.column("command", 32)
+      .. text.column("launch", 32)
       .. " project",
     string.rep("-", 86),
   }
-
-  state.items_by_line = {}
 
   if vim.tbl_isempty(found_apps) then
     lines[#lines + 1] = "No local Shiny apps found"
@@ -112,7 +141,6 @@ local function draw_apps(state)
     end
     lines[#lines + 1] = ""
     lines[#lines + 1] = "Press Ctrl+b in a Shiny project to start one"
-    state.first_item = nil
     return lines
   end
 
@@ -128,9 +156,9 @@ local function draw_apps(state)
       .. " "
       .. text.column(app.pid or "-", 8)
       .. " "
-      .. text.column(app.command or "-", 32)
+      .. text.column(app.launch or "-", 32)
       .. " "
-      .. text.shorten(app.project or "-", 38)
+      .. text.shorten(project_label(app.project, state.root), 38)
     if not state.first_item then
       state.first_item = line_number
     end
@@ -140,6 +168,7 @@ local function draw_apps(state)
 end
 
 local function draw_project(state)
+  local mappings = require("tapyr").config.mappings
   local lines = {
     view_bar(state.view),
     "",
@@ -147,14 +176,11 @@ local function draw_project(state)
     string.rep("-", 74),
   }
 
-  state.items_by_line = {}
-  state.first_item = nil
-
   for _, item in ipairs(project_items) do
     if item.kind == "task" then
       lines[#lines + 1] = text.column(item.name, 18)
         .. " "
-        .. text.column(item.key, 14)
+        .. text.column(mapping_label(mappings[item.mapping]), 14)
         .. " "
         .. item.command
     elseif item.kind == "path" then
@@ -178,8 +204,6 @@ end
 
 local function draw_help(state)
   local found_apps, note = apps.find()
-  state.items_by_line = {}
-  state.first_item = nil
 
   local lines = {
     view_bar(state.view),
@@ -216,6 +240,15 @@ local function current_item(state)
   return state.items_by_line and state.items_by_line[line_number] or nil
 end
 
+local function selected_app(state)
+  local item = current_item(state)
+  if not item or not item.app then
+    messages.show("Select an app first", vim.log.levels.WARN)
+    return nil
+  end
+  return item.app
+end
+
 local function close(state)
   if state.win and vim.api.nvim_win_is_valid(state.win) then
     vim.api.nvim_win_close(state.win, true)
@@ -250,6 +283,12 @@ local function draw(state)
     end_col = end_col,
     hl_group = "DiagnosticWarn",
   })
+  if view ~= "help" then
+    vim.api.nvim_buf_set_extmark(state.buf, highlight_namespace, 2, 0, {
+      end_col = #lines[3],
+      hl_group = { "DiagnosticOk", "Bold" },
+    })
+  end
 
   if state.first_item then
     pcall(vim.api.nvim_win_set_cursor, state.win, { state.first_item, 0 })
@@ -393,34 +432,26 @@ function panel.open(root)
     draw(state)
   end, "Tapyr: refresh")
   map(state, "R", function()
-    local item = current_item(state)
-    local app = item and item.app
-    if apps.restart(app, state.root) then
+    local app = selected_app(state)
+    if app and apps.restart(app, state.root) then
       refresh_until(state, function(found)
         return not has_app(found, app) and has_replacement(found, app)
       end, 12)
     end
   end, "Tapyr: restart selected app")
   map(state, "x", function()
-    local item = current_item(state)
-    if not item or not item.app then
-      messages.show("Select an app first", vim.log.levels.WARN)
-      return
-    end
-    local app = item.app
-    if apps.stop(app) then
+    local app = selected_app(state)
+    if app and apps.stop(app) then
       refresh_until(state, function(found)
         return not has_app(found, app)
       end, 12)
     end
   end, "Tapyr: stop selected app")
   map(state, "o", function()
-    local item = current_item(state)
-    if not item or not item.app then
-      messages.show("Select an app first", vim.log.levels.WARN)
-      return
+    local app = selected_app(state)
+    if app then
+      apps.open_in_browser(app.url)
     end
-    apps.open_in_browser(item.app.url)
   end, "Tapyr: open selected app")
   map(state, "q", function()
     close(state)

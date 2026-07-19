@@ -14,18 +14,16 @@ local status = {
 }
 
 local created = {}
+local opened = {}
 local function new_task(spec)
   local task = {
     disposed = false,
+    id = #created + 1,
     restarts = 0,
     starts = 0,
     status = status.PENDING,
     spec = spec,
   }
-
-  function task:get_bufnr()
-    return nil
-  end
 
   function task:is_disposed()
     return self.disposed
@@ -50,8 +48,8 @@ package.loaded.overseer = {
     created[#created + 1] = task
     return task
   end,
-  run_action = function()
-    error("task output should not open without a buffer")
+  open = function(opts)
+    opened[#opened + 1] = opts
   end,
 }
 package.loaded["overseer.constants"] = { STATUS = status }
@@ -76,19 +74,10 @@ project_executables[project_shiny] = true
 assert(tasks.resolve("run", "/tmp/project")[1] == project_shiny, "project Shiny was not preferred")
 project_executables[project_shiny] = nil
 
-tasks.start("/tmp/start")
-assert(created[#created].starts == 1, "start task was not started")
-assert(created[#created].spec.cwd == "/tmp/start", "start task used the wrong root")
-assert(created[#created].spec.cmd[1] == "/usr/bin/shiny", "start task used the wrong executable")
-assert(created[#created].spec.cmd[3] == "--reload", "start task did not enable reload")
-assert(
-  created[#created].spec.env.PYTHONDONTWRITEBYTECODE == "1",
-  "start task allowed bytecode writes"
-)
-
 tasks.run("/tmp/run")
 local run_task = created[#created]
 assert(run_task.starts == 1, "pending task was not started")
+assert(opened[#opened].focus_task_id == run_task.id, "run task was not selected")
 
 run_task.status = "success"
 tasks.run("/tmp/run")
@@ -98,16 +87,34 @@ run_task.status = status.RUNNING
 tasks.run("/tmp/run")
 assert(run_task.restarts == 1, "running task was restarted")
 
-tasks.restart("/tmp/restart")
+run_task.disposed = true
+tasks.run("/tmp/run")
+local replacement_task = created[#created]
+assert(replacement_task ~= run_task, "disposed task was retained")
+assert(replacement_task.starts == 1, "replacement task was not started")
+
+local opened_before_restart = #opened
+tasks.restart("/tmp/restart", false)
 local restart_task = created[#created]
 assert(restart_task.starts == 1, "new restart task was not started")
+assert(#opened == opened_before_restart, "silent restart opened the Overseer task list")
+assert(restart_task.spec.cwd == "/tmp/restart", "restart task used the wrong root")
+assert(restart_task.spec.cmd[1] == "/usr/bin/shiny", "restart task used the wrong executable")
+assert(restart_task.spec.cmd[3] == "--reload", "restart task did not enable reload")
+assert(
+  restart_task.spec.env.PYTHONDONTWRITEBYTECODE == "1",
+  "restart task allowed bytecode writes"
+)
 
 tasks.restart("/tmp/restart")
 assert(restart_task.restarts == 1, "existing task was not restarted")
+assert(opened[#opened].enter == false, "Overseer task list took focus")
+assert(opened[#opened].focus_task_id == restart_task.id, "restarted task was not selected")
 
 tasks.test("/tmp/test")
 local test_task = created[#created]
 assert(test_task.starts == 1, "test task was not started")
+assert(opened[#opened].focus_task_id == test_task.id, "test task was not selected")
 assert(test_task.spec.cwd == "/tmp/test", "test task used the wrong root")
 assert(test_task.spec.cmd[1] == "/usr/bin/pytest", "test task used the wrong command")
 assert(test_task.spec.env.PYTHONDONTWRITEBYTECODE == "1", "test task allowed bytecode writes")
@@ -127,6 +134,18 @@ assert(
 )
 
 vim.fn.exepath = function(command)
+  if command == "pytest" then
+    return ""
+  end
+  return "/usr/bin/" .. command
+end
+tasks.test("/tmp/missing-pytest")
+assert(
+  messages_seen[#messages_seen]:find("pytest is not available", 1, true),
+  "missing pytest error was not shown"
+)
+
+vim.fn.exepath = function(command)
   return "/usr/bin/" .. command
 end
 package.loaded.overseer = nil
@@ -134,7 +153,7 @@ package.preload.overseer = function()
   error("overseer unavailable")
 end
 
-tasks.start("/tmp/missing-overseer")
+tasks.restart("/tmp/missing-overseer")
 assert(
   messages_seen[#messages_seen] == "Overseer is required to run apps and tests",
   "missing Overseer error was not shown"

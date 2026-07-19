@@ -8,7 +8,7 @@ local messages = require("tapyr.messages")
 ---@field port integer
 ---@field pid? integer
 ---@field argv? string[]
----@field command? string
+---@field launch? string
 ---@field cwd? string
 ---@field project? string
 ---@field start_time string
@@ -17,18 +17,17 @@ local messages = require("tapyr.messages")
 ---@class TapyrProcess
 ---@field pid integer
 ---@field argv string[]
----@field command string
 ---@field cwd? string
 ---@field start_time? string
 
-local function read_command(pid)
+local function read_arguments(pid)
   if not pid then
-    return nil, nil
+    return nil
   end
 
   local handle = io.open("/proc/" .. pid .. "/cmdline", "rb")
   if not handle then
-    return nil, nil
+    return nil
   end
 
   local raw = handle:read("*a")
@@ -39,10 +38,10 @@ local function read_command(pid)
     argv[#argv + 1] = arg
   end
   if vim.tbl_isempty(argv) then
-    return nil, nil
+    return nil
   end
 
-  return argv, table.concat(argv, " ")
+  return argv
 end
 
 local function read_working_directory(pid)
@@ -160,10 +159,37 @@ function apps.is_shiny_command(argv)
   return shiny_run_index(argv) ~= nil
 end
 
+---@param argv? string[]
+---@return string
+function apps.launch_label(argv)
+  local run_index = shiny_run_index(argv)
+  if not run_index then
+    return "-"
+  end
+
+  local start_index = run_index - 1
+  for index = start_index - 1, 1, -1 do
+    if vim.fs.basename(argv[index]):lower() == "uv" then
+      start_index = index
+      break
+    end
+  end
+
+  local command = {}
+  for index = start_index, #argv do
+    local argument = argv[index]
+    if argument:sub(1, 1) == "/" then
+      argument = vim.fs.basename(argument)
+    end
+    command[#command + 1] = argument
+  end
+  return table.concat(command, " ")
+end
+
 ---@param pid integer
 ---@return TapyrProcess?
 function apps.inspect(pid)
-  local argv, command = read_command(pid)
+  local argv = read_arguments(pid)
   if not argv then
     return nil
   end
@@ -171,7 +197,6 @@ function apps.inspect(pid)
   return {
     pid = pid,
     argv = argv,
-    command = command,
     cwd = read_working_directory(pid),
     start_time = read_start_time(pid),
   }
@@ -294,7 +319,7 @@ function apps.find()
           port = port,
           pid = process.pid,
           argv = process.argv,
-          command = process.command,
+          launch = apps.launch_label(process.argv),
           cwd = process.cwd,
           project = project,
           start_time = process.start_time,
@@ -371,7 +396,7 @@ function apps.restart(app, root)
       return false
     end
     vim.defer_fn(function()
-      tasks.start(root, false)
+      tasks.restart(root, false)
     end, 250)
     return true
   end
@@ -390,9 +415,9 @@ function apps.restart(app, root)
       detach = true,
     })
     if job <= 0 then
-      messages.show("Could not restart " .. (app.command or "app"), vim.log.levels.ERROR)
+      messages.show("Could not restart " .. (app.launch or "app"), vim.log.levels.ERROR)
     else
-      messages.show("Restarted " .. (app.command or "app"))
+      messages.show("Restarted " .. (app.launch or "app"))
     end
   end, 250)
   return true
@@ -400,16 +425,7 @@ end
 
 ---@param url string
 function apps.open_in_browser(url)
-  if vim.ui and vim.ui.open then
-    vim.ui.open(url)
-    return
-  end
-
-  if vim.fn.executable("xdg-open") == 1 then
-    vim.fn.jobstart({ "xdg-open", url }, { detach = true })
-  else
-    messages.show("No browser command is available for " .. url, vim.log.levels.WARN)
-  end
+  vim.ui.open(url)
 end
 
 return apps

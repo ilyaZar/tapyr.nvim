@@ -1,7 +1,5 @@
 local project = {}
 
-local uv = vim.uv or vim.loop
-
 local function imports_shiny(path)
   if vim.fn.filereadable(path) ~= 1 then
     return false
@@ -29,7 +27,7 @@ function project.find_root(bufnr)
   end
 
   local path = vim.api.nvim_buf_get_name(bufnr)
-  local start = path ~= "" and vim.fs.dirname(path) or uv.cwd()
+  local start = path ~= "" and vim.fs.dirname(path) or vim.uv.cwd()
   local app = vim.fs.find("app.py", {
     upward = true,
     path = start,

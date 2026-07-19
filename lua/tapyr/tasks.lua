@@ -23,23 +23,15 @@ local function get_overseer()
   return overseer
 end
 
-local function task_is_gone(task)
-  return not task or task:is_disposed()
-end
-
-local function show_output(task)
-  vim.defer_fn(function()
-    if task_is_gone(task) or not task:get_bufnr() then
-      return
-    end
-
-    local overseer = get_overseer()
-    if not overseer then
-      return
-    end
-    overseer.run_action(task, "open hsplit")
-    vim.cmd("wincmd p")
-  end, 100)
+local function show_task(task)
+  local overseer = get_overseer()
+  if not overseer then
+    return
+  end
+  overseer.open({
+    enter = false,
+    focus_task_id = task.id,
+  })
 end
 
 ---@param name "run"|"test"
@@ -60,7 +52,7 @@ function tasks.resolve(name, root)
     return nil
   end
 
-  return vim.list_extend({ executable }, vim.deepcopy(tool.arguments))
+  return vim.list_extend({ executable }, tool.arguments)
 end
 
 local function missing_tool(name, root)
@@ -94,44 +86,32 @@ local function new_app_task(root)
   })
 end
 
+local function ensure_app_task(root)
+  local task = app_tasks[root]
+  local created = not task or task:is_disposed()
+  if created then
+    task = new_app_task(root)
+    app_tasks[root] = task
+  end
+
+  return task, created
+end
+
 ---@param name "run"|"test"
 ---@return string
 function tasks.describe(name)
   local tool = tools[name]
-  return table.concat(vim.list_extend({ tool.executable }, vim.deepcopy(tool.arguments)), " ")
-end
-
----@param root string
----@param open_output? boolean
-function tasks.start(root, open_output)
-  local task = new_app_task(root)
-  if not task then
-    return
-  end
-
-  app_tasks[root] = task
-  task:start()
-  if open_output ~= false then
-    show_output(task)
-  end
+  return table.concat(vim.list_extend({ tool.executable }, tool.arguments), " ")
 end
 
 ---@param root string
 function tasks.run(root)
-  local task = app_tasks[root]
-  if task_is_gone(task) then
-    task = new_app_task(root)
-    if not task then
-      return
-    end
-    app_tasks[root] = task
-  end
-
-  local ok, constants = pcall(require, "overseer.constants")
-  if not ok then
-    messages.show("Overseer is required to run apps and tests", vim.log.levels.ERROR)
+  local task = ensure_app_task(root)
+  if not task then
     return
   end
+
+  local constants = require("overseer.constants")
 
   if task.status == constants.STATUS.PENDING then
     task:start()
@@ -139,24 +119,26 @@ function tasks.run(root)
     task:restart(true)
   end
 
-  show_output(task)
+  show_task(task)
 end
 
 ---@param root string
-function tasks.restart(root)
-  local task = app_tasks[root]
-  if task_is_gone(task) then
-    task = new_app_task(root)
-    if not task then
-      return
-    end
-    app_tasks[root] = task
+---@param show_task_list? boolean
+function tasks.restart(root, show_task_list)
+  local task, created = ensure_app_task(root)
+  if not task then
+    return
+  end
+
+  if created then
     task:start()
   else
     task:restart(true)
   end
 
-  show_output(task)
+  if show_task_list ~= false then
+    show_task(task)
+  end
 end
 
 ---@param root string
@@ -185,7 +167,7 @@ function tasks.test(root)
   })
 
   task:start()
-  show_output(task)
+  show_task(task)
 end
 
 return tasks

@@ -2,7 +2,6 @@
 
 local tapyr = {}
 
-local uv = vim.uv or vim.loop
 local active_root = nil
 
 ---@class TapyrMappings
@@ -82,7 +81,7 @@ end
 
 ---@param root? string
 function tapyr.open(root)
-  root = root or require("tapyr.project").find_root(0) or active_root or uv.cwd()
+  root = root or require("tapyr.project").find_root(0) or active_root or vim.uv.cwd()
 
   return require("tapyr.panel").open(root)
 end

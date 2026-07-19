@@ -23,7 +23,7 @@ required for its defaults.
 ==============================================================================
 2. Requirements                                            *tapyr-requirements*
 
-- Neovim 0.10 or newer
+- Neovim 0.11 or newer
 - Linux with /proc and ss
 - overseer.nvim
 - A prepared project environment with shiny and pytest available in .venv/bin
