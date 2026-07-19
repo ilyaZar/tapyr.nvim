@@ -6,6 +6,7 @@ local tasks = require("tapyr.tasks")
 local text = require("tapyr.text")
 
 local uv = vim.uv or vim.loop
+local highlight_namespace = vim.api.nvim_create_namespace("tapyr.panel")
 
 local views = {
   { key = "apps", label = "Apps" },
@@ -63,15 +64,15 @@ local function footer()
     { " " },
     { "Tab", "DiagnosticOk" },
     { ":views  " },
+    { "[r]", "DiagnosticOk" },
+    { " refresh  " },
     { "[R]", "DiagnosticOk" },
     { " restart  " },
-    { "[K]", "DiagnosticOk" },
+    { "[x]", "DiagnosticOk" },
     { " stop  " },
-    { "[S]", "DiagnosticOk" },
+    { "[o]", "DiagnosticOk" },
     { " open  " },
-    { "CR", "DiagnosticOk" },
-    { ":open file  " },
-    { "[C]", "DiagnosticOk" },
+    { "[q]", "DiagnosticOk" },
     { " close " },
   }
 end
@@ -138,13 +139,6 @@ local function draw_apps(state)
   return lines
 end
 
-local function project_path(item, root)
-  if item.path:sub(1, 1) == "/" then
-    return item.path
-  end
-  return vim.fs.joinpath(root, item.path)
-end
-
 local function draw_project(state)
   local lines = {
     view_bar(state.view),
@@ -165,7 +159,7 @@ local function draw_project(state)
         .. item.command
     elseif item.kind == "path" then
       local line_number = #lines + 1
-      local path = project_path(item, state.root)
+      local path = vim.fs.joinpath(state.root, item.path)
       state.items_by_line[line_number] = {
         kind = "path",
         path = path,
@@ -192,9 +186,10 @@ local function draw_help(state)
     "",
     "keys",
     "  Tab       change view",
-    "  R/K/S     restart, stop, or open the selected app",
+    "  r         refresh apps",
+    "  R/x/o     restart, stop, or open the selected app",
     "  Enter     open a file from Project",
-    "  C/q/Esc   close",
+    "  q/Esc     close",
     "",
     "project",
     "  apps found: " .. #found_apps,
@@ -248,11 +243,61 @@ local function draw(state)
   vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
   vim.api.nvim_set_option_value("modifiable", false, { buf = state.buf })
 
+  local active_label = "[" .. views[state.view].label .. "]"
+  local start_col, end_col = lines[1]:find(active_label, 1, true)
+  vim.api.nvim_buf_clear_namespace(state.buf, highlight_namespace, 0, -1)
+  vim.api.nvim_buf_set_extmark(state.buf, highlight_namespace, 0, start_col - 1, {
+    end_col = end_col,
+    hl_group = "DiagnosticWarn",
+  })
+
   if state.first_item then
     pcall(vim.api.nvim_win_set_cursor, state.win, { state.first_item, 0 })
   else
     pcall(vim.api.nvim_win_set_cursor, state.win, { 1, 0 })
   end
+end
+
+local function is_open(state)
+  return state.win and vim.api.nvim_win_is_valid(state.win)
+end
+
+local function same_app(left, right)
+  return left.pid == right.pid and left.start_time == right.start_time
+end
+
+local function has_app(found, expected)
+  for _, app in ipairs(found) do
+    if same_app(app, expected) then
+      return true
+    end
+  end
+  return false
+end
+
+local function has_replacement(found, previous)
+  local project = previous.project or previous.cwd
+  for _, app in ipairs(found) do
+    if (app.project or app.cwd) == project and not same_app(app, previous) then
+      return true
+    end
+  end
+  return false
+end
+
+local function refresh_until(state, done, remaining)
+  if not is_open(state) then
+    return
+  end
+
+  draw(state)
+  if done(state.apps) or remaining <= 1 then
+    return
+  end
+
+  vim.defer_fn(function()
+    refresh_until(state, done, remaining - 1)
+  end, 250)
 end
 
 local function move_view(state, direction)
@@ -344,29 +389,32 @@ function panel.open(root)
   map(state, "<CR>", function()
     open_project_file(state)
   end, "Tapyr: open project file")
+  map(state, "r", function()
+    draw(state)
+  end, "Tapyr: refresh")
   map(state, "R", function()
     local item = current_item(state)
-    apps.restart(item and item.app, state.root)
-    vim.defer_fn(function()
-      if state.win and vim.api.nvim_win_is_valid(state.win) then
-        draw(state)
-      end
-    end, 600)
+    local app = item and item.app
+    if apps.restart(app, state.root) then
+      refresh_until(state, function(found)
+        return not has_app(found, app) and has_replacement(found, app)
+      end, 12)
+    end
   end, "Tapyr: restart selected app")
-  map(state, "K", function()
+  map(state, "x", function()
     local item = current_item(state)
     if not item or not item.app then
       messages.show("Select an app first", vim.log.levels.WARN)
       return
     end
-    apps.stop(item.app.pid)
-    vim.defer_fn(function()
-      if state.win and vim.api.nvim_win_is_valid(state.win) then
-        draw(state)
-      end
-    end, 400)
+    local app = item.app
+    if apps.stop(app) then
+      refresh_until(state, function(found)
+        return not has_app(found, app)
+      end, 12)
+    end
   end, "Tapyr: stop selected app")
-  map(state, "S", function()
+  map(state, "o", function()
     local item = current_item(state)
     if not item or not item.app then
       messages.show("Select an app first", vim.log.levels.WARN)
@@ -374,9 +422,6 @@ function panel.open(root)
     end
     apps.open_in_browser(item.app.url)
   end, "Tapyr: open selected app")
-  map(state, "C", function()
-    close(state)
-  end, "Tapyr: close")
   map(state, "q", function()
     close(state)
   end, "Tapyr: close")

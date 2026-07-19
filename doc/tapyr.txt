@@ -6,17 +6,19 @@ CONTENTS                                                      *tapyr-contents*
 1. Introduction                                             |tapyr-introduction|
 2. Requirements                                             |tapyr-requirements|
 3. Usage                                                     |tapyr-usage|
-4. Health                                                    |tapyr-health|
+4. Configuration                                             |tapyr-configuration|
+5. Health                                                    |tapyr-health|
 
 ==============================================================================
 1. Introduction                                            *tapyr-introduction*
 
-Tapyr keeps the usual Shiny for Python loop inside Neovim. It detects projects
-from an app.py file that imports shiny, runs apps and tests through
-overseer.nvim, and shows local apps in a floating panel.
+Tapyr adds focused Shiny for Python tools to Neovim. It detects projects from
+an app.py file that imports shiny, starts apps with live reload, runs tests
+through overseer.nvim, and lists running Shiny apps with controls to open,
+restart, or stop them.
 
 Tapyr initializes automatically when installed. No configuration call is
-required.
+required for its defaults.
 
 ==============================================================================
 2. Requirements                                            *tapyr-requirements*
@@ -24,7 +26,8 @@ required.
 - Neovim 0.10 or newer
 - Linux with /proc and ss
 - overseer.nvim
-- uv and Shiny for Python in the application project
+- A prepared project environment with shiny and pytest available in .venv/bin
+  or Neovim's PATH
 
 ==============================================================================
 3. Usage                                                         *tapyr-usage*
@@ -42,20 +45,37 @@ CTRL-T                  Run the test suite.
 Panel mappings:
 
 Tab / Shift-Tab         Cycle views.
+r                       Refresh the application list.
 R                       Restart the selected application.
-K                       Stop the selected application.
-S                       Open the selected application URL.
+x                       Stop the selected application.
+o                       Open the selected application URL.
 Enter                   Open a selected file in the Project view.
-q / Esc / C             Close the panel.
+q / Esc                 Close the panel.
 
 ==============================================================================
-4. Health                                                       *tapyr-health*
+4. Configuration                                         *tapyr-configuration*
+
+The default buffer-local mappings can be changed or disabled:
+>
+  require("tapyr").setup({
+    mappings = {
+      run = "<C-b>",
+      restart = "<C-S-b>",
+      test = "<C-t>",
+      panel = "<leader>tm",
+    },
+  })
+<
+Set an individual mapping to false to disable it.
+
+==============================================================================
+5. Health                                                       *tapyr-health*
 
 Run:
 >
   :checkhealth tapyr
 <
-The health check reports Neovim compatibility and the availability of uv, ss,
-/proc, and overseer.nvim.
+The health check reports Neovim compatibility and the availability of shiny,
+pytest, ss, /proc, and overseer.nvim.
 
 vim:tw=78:ts=8:noet:ft=help:norl:

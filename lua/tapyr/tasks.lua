@@ -3,9 +3,15 @@ local tasks = {}
 local messages = require("tapyr.messages")
 local app_tasks = {}
 
-local commands = {
-  run = { "uv", "run", "shiny", "run", "app.py" },
-  test = { "uv", "run", "pytest" },
+local tools = {
+  run = {
+    executable = "shiny",
+    arguments = { "run", "--reload", "app.py" },
+  },
+  test = {
+    executable = "pytest",
+    arguments = {},
+  },
 }
 
 local function get_overseer()
@@ -36,7 +42,44 @@ local function show_output(task)
   end, 100)
 end
 
+---@param name "run"|"test"
+---@param root string
+---@return string[]?
+function tasks.resolve(name, root)
+  local tool = tools[name]
+  local project_executable = vim.fs.joinpath(root, ".venv", "bin", tool.executable)
+  local executable
+
+  if vim.fn.executable(project_executable) == 1 then
+    executable = project_executable
+  else
+    executable = vim.fn.exepath(tool.executable)
+  end
+
+  if not executable or executable == "" then
+    return nil
+  end
+
+  return vim.list_extend({ executable }, vim.deepcopy(tool.arguments))
+end
+
+local function missing_tool(name, root)
+  messages.show(
+    tools[name].executable
+      .. " is not available in "
+      .. vim.fs.joinpath(root, ".venv", "bin")
+      .. " or Neovim's PATH",
+    vim.log.levels.ERROR
+  )
+end
+
 local function new_app_task(root)
+  local command = tasks.resolve("run", root)
+  if not command then
+    missing_tool("run", root)
+    return nil
+  end
+
   local overseer = get_overseer()
   if not overseer then
     return nil
@@ -44,8 +87,9 @@ local function new_app_task(root)
 
   return overseer.new_task({
     name = "Tapyr: run app",
-    cmd = commands.run,
+    cmd = command,
     cwd = root,
+    env = { PYTHONDONTWRITEBYTECODE = "1" },
     components = { "default" },
   })
 end
@@ -53,11 +97,13 @@ end
 ---@param name "run"|"test"
 ---@return string
 function tasks.describe(name)
-  return table.concat(commands[name], " ")
+  local tool = tools[name]
+  return table.concat(vim.list_extend({ tool.executable }, vim.deepcopy(tool.arguments)), " ")
 end
 
 ---@param root string
-function tasks.start(root)
+---@param open_output? boolean
+function tasks.start(root, open_output)
   local task = new_app_task(root)
   if not task then
     return
@@ -65,7 +111,9 @@ function tasks.start(root)
 
   app_tasks[root] = task
   task:start()
-  show_output(task)
+  if open_output ~= false then
+    show_output(task)
+  end
 end
 
 ---@param root string
@@ -113,6 +161,12 @@ end
 
 ---@param root string
 function tasks.test(root)
+  local command = tasks.resolve("test", root)
+  if not command then
+    missing_tool("test", root)
+    return
+  end
+
   local overseer = get_overseer()
   if not overseer then
     return
@@ -120,8 +174,9 @@ function tasks.test(root)
 
   local task = overseer.new_task({
     name = "Tapyr: test app",
-    cmd = commands.test,
+    cmd = command,
     cwd = root,
+    env = { PYTHONDONTWRITEBYTECODE = "1" },
     components = {
       { "on_output_quickfix", open_on_match = true, set_diagnostics = true },
       "on_result_diagnostics",

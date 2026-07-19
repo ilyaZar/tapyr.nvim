@@ -1,6 +1,8 @@
 local health = {}
 
 function health.check()
+  local root = (vim.uv or vim.loop).cwd()
+
   vim.health.start("tapyr.nvim")
 
   if vim.fn.has("nvim-0.10") == 1 then
@@ -9,10 +11,14 @@ function health.check()
     vim.health.error("Neovim 0.10 or newer is required")
   end
 
-  if vim.fn.executable("uv") == 1 then
-    vim.health.ok("uv is available")
-  else
-    vim.health.error("uv is required to run apps and tests")
+  for _, name in ipairs({ "run", "test" }) do
+    local command = require("tapyr.tasks").resolve(name, root)
+    if command then
+      vim.health.ok(vim.fs.basename(command[1]) .. " is available")
+    else
+      local executable = name == "run" and "shiny" or "pytest"
+      vim.health.error(executable .. " is not available in .venv or Neovim's PATH")
+    end
   end
 
   if vim.fn.executable("ss") == 1 then
