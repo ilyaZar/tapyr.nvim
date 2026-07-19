@@ -7,7 +7,7 @@ local original_inspect = apps.inspect
 local original_jobstart = vim.fn.jobstart
 local original_open = vim.ui.open
 local original_show = messages.show
-local original_start = tasks.start
+local original_restart = tasks.restart
 local original_stop = apps.stop
 local original_system = vim.system
 
@@ -33,7 +33,6 @@ assert(not apps.stop(nil), "missing PID was stopped")
 local current_process = {
   pid = 101,
   argv = { "/tmp/project/.venv/bin/shiny", "run", "--reload", "app.py" },
-  command = "/tmp/project/.venv/bin/shiny run --reload app.py",
   cwd = "/tmp/project",
   start_time = "1001",
 }
@@ -49,7 +48,7 @@ assert(
 assert(not apps.is_shiny_command({ "python", "app.py" }), "generic app.py command was accepted")
 assert(not apps.is_shiny_command({ "uvicorn", "shiny_service:app" }), "unrelated command was accepted")
 assert(
-  apps.command_label({
+  apps.launch_label({
     "/tmp/project/.venv/bin/python",
     "/tmp/project/.venv/bin/shiny",
     "run",
@@ -59,7 +58,7 @@ assert(
   "direct Shiny command label kept paths"
 )
 assert(
-  apps.command_label({
+  apps.launch_label({
     "/usr/bin/uv",
     "run",
     "/tmp/project/.venv/bin/shiny",
@@ -69,7 +68,7 @@ assert(
   }) == "uv run shiny run --reload app.py",
   "uv command label lost its launcher"
 )
-assert(apps.command_label({ "python", "app.py" }) == "-", "unrelated command received a label")
+assert(apps.launch_label({ "python", "app.py" }) == "-", "unrelated command received a label")
 
 assert(apps.stop(current_process), "valid app was not stopped")
 assert(kills == 1, "valid app did not reach kill")
@@ -105,7 +104,7 @@ local stop_result = true
 apps.stop = function()
   return stop_result
 end
-tasks.start = function(root, show_task_list)
+tasks.restart = function(root, show_task_list)
   started = {
     root = root,
     show_task_list = show_task_list,
@@ -146,7 +145,7 @@ apps.restart({
   project = "/tmp/other",
   cwd = "/tmp/other",
   argv = { "shiny", "run", "app.py" },
-  command = "shiny run app.py",
+  launch = "shiny run app.py",
 }, "/tmp/current")
 assert(jobs_started == 1, "external app was not restarted")
 
@@ -173,7 +172,7 @@ assert(opened_url == "http://127.0.0.1:8000", "vim.ui.open was not used")
 apps.stop = original_stop
 apps.inspect = original_inspect
 messages.show = original_show
-tasks.start = original_start
+tasks.restart = original_restart
 vim.defer_fn = original_defer_fn
 vim.fn.jobstart = original_jobstart
 vim.system = original_system

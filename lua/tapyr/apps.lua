@@ -8,8 +8,7 @@ local messages = require("tapyr.messages")
 ---@field port integer
 ---@field pid? integer
 ---@field argv? string[]
----@field command? string
----@field launch string
+---@field launch? string
 ---@field cwd? string
 ---@field project? string
 ---@field start_time string
@@ -18,18 +17,17 @@ local messages = require("tapyr.messages")
 ---@class TapyrProcess
 ---@field pid integer
 ---@field argv string[]
----@field command string
 ---@field cwd? string
 ---@field start_time? string
 
-local function read_command(pid)
+local function read_arguments(pid)
   if not pid then
-    return nil, nil
+    return nil
   end
 
   local handle = io.open("/proc/" .. pid .. "/cmdline", "rb")
   if not handle then
-    return nil, nil
+    return nil
   end
 
   local raw = handle:read("*a")
@@ -40,10 +38,10 @@ local function read_command(pid)
     argv[#argv + 1] = arg
   end
   if vim.tbl_isempty(argv) then
-    return nil, nil
+    return nil
   end
 
-  return argv, table.concat(argv, " ")
+  return argv
 end
 
 local function read_working_directory(pid)
@@ -163,7 +161,7 @@ end
 
 ---@param argv? string[]
 ---@return string
-function apps.command_label(argv)
+function apps.launch_label(argv)
   local run_index = shiny_run_index(argv)
   if not run_index then
     return "-"
@@ -191,7 +189,7 @@ end
 ---@param pid integer
 ---@return TapyrProcess?
 function apps.inspect(pid)
-  local argv, command = read_command(pid)
+  local argv = read_arguments(pid)
   if not argv then
     return nil
   end
@@ -199,7 +197,6 @@ function apps.inspect(pid)
   return {
     pid = pid,
     argv = argv,
-    command = command,
     cwd = read_working_directory(pid),
     start_time = read_start_time(pid),
   }
@@ -322,8 +319,7 @@ function apps.find()
           port = port,
           pid = process.pid,
           argv = process.argv,
-          command = process.command,
-          launch = apps.command_label(process.argv),
+          launch = apps.launch_label(process.argv),
           cwd = process.cwd,
           project = project,
           start_time = process.start_time,
@@ -400,7 +396,7 @@ function apps.restart(app, root)
       return false
     end
     vim.defer_fn(function()
-      tasks.start(root, false)
+      tasks.restart(root, false)
     end, 250)
     return true
   end
@@ -419,9 +415,9 @@ function apps.restart(app, root)
       detach = true,
     })
     if job <= 0 then
-      messages.show("Could not restart " .. (app.command or "app"), vim.log.levels.ERROR)
+      messages.show("Could not restart " .. (app.launch or "app"), vim.log.levels.ERROR)
     else
-      messages.show("Restarted " .. (app.command or "app"))
+      messages.show("Restarted " .. (app.launch or "app"))
     end
   end, 250)
   return true

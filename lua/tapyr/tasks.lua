@@ -56,7 +56,7 @@ function tasks.resolve(name, root)
     return nil
   end
 
-  return vim.list_extend({ executable }, vim.deepcopy(tool.arguments))
+  return vim.list_extend({ executable }, tool.arguments)
 end
 
 local function missing_tool(name, root)
@@ -94,22 +94,7 @@ end
 ---@return string
 function tasks.describe(name)
   local tool = tools[name]
-  return table.concat(vim.list_extend({ tool.executable }, vim.deepcopy(tool.arguments)), " ")
-end
-
----@param root string
----@param show_task_list? boolean
-function tasks.start(root, show_task_list)
-  local task = new_app_task(root)
-  if not task then
-    return
-  end
-
-  app_tasks[root] = task
-  task:start()
-  if show_task_list ~= false then
-    show_task(task)
-  end
+  return table.concat(vim.list_extend({ tool.executable }, tool.arguments), " ")
 end
 
 ---@param root string
@@ -135,7 +120,8 @@ function tasks.run(root)
 end
 
 ---@param root string
-function tasks.restart(root)
+---@param show_task_list? boolean
+function tasks.restart(root, show_task_list)
   local task = app_tasks[root]
   if task_is_gone(task) then
     task = new_app_task(root)
@@ -148,7 +134,9 @@ function tasks.restart(root)
     task:restart(true)
   end
 
-  show_task(task)
+  if show_task_list ~= false then
+    show_task(task)
+  end
 end
 
 ---@param root string

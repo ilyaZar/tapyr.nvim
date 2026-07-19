@@ -74,18 +74,6 @@ project_executables[project_shiny] = true
 assert(tasks.resolve("run", "/tmp/project")[1] == project_shiny, "project Shiny was not preferred")
 project_executables[project_shiny] = nil
 
-tasks.start("/tmp/start")
-assert(created[#created].starts == 1, "start task was not started")
-assert(opened[#opened].enter == false, "Overseer task list took focus")
-assert(opened[#opened].focus_task_id == created[#created].id, "started task was not selected")
-assert(created[#created].spec.cwd == "/tmp/start", "start task used the wrong root")
-assert(created[#created].spec.cmd[1] == "/usr/bin/shiny", "start task used the wrong executable")
-assert(created[#created].spec.cmd[3] == "--reload", "start task did not enable reload")
-assert(
-  created[#created].spec.env.PYTHONDONTWRITEBYTECODE == "1",
-  "start task allowed bytecode writes"
-)
-
 tasks.run("/tmp/run")
 local run_task = created[#created]
 assert(run_task.starts == 1, "pending task was not started")
@@ -99,12 +87,23 @@ run_task.status = status.RUNNING
 tasks.run("/tmp/run")
 assert(run_task.restarts == 1, "running task was restarted")
 
-tasks.restart("/tmp/restart")
+local opened_before_restart = #opened
+tasks.restart("/tmp/restart", false)
 local restart_task = created[#created]
 assert(restart_task.starts == 1, "new restart task was not started")
+assert(#opened == opened_before_restart, "silent restart opened the Overseer task list")
+assert(restart_task.spec.cwd == "/tmp/restart", "restart task used the wrong root")
+assert(restart_task.spec.cmd[1] == "/usr/bin/shiny", "restart task used the wrong executable")
+assert(restart_task.spec.cmd[3] == "--reload", "restart task did not enable reload")
+assert(
+  restart_task.spec.env.PYTHONDONTWRITEBYTECODE == "1",
+  "restart task allowed bytecode writes"
+)
 
 tasks.restart("/tmp/restart")
 assert(restart_task.restarts == 1, "existing task was not restarted")
+assert(opened[#opened].enter == false, "Overseer task list took focus")
+assert(opened[#opened].focus_task_id == restart_task.id, "restarted task was not selected")
 
 tasks.test("/tmp/test")
 local test_task = created[#created]
@@ -148,7 +147,7 @@ package.preload.overseer = function()
   error("overseer unavailable")
 end
 
-tasks.start("/tmp/missing-overseer")
+tasks.restart("/tmp/missing-overseer")
 assert(
   messages_seen[#messages_seen] == "Overseer is required to run apps and tests",
   "missing Overseer error was not shown"
