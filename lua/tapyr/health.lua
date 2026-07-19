@@ -2,6 +2,7 @@ local health = {}
 
 function health.check()
   local root = vim.uv.cwd()
+  local app = require("tapyr.project").new(root)
 
   vim.health.start("tapyr.nvim")
 
@@ -12,11 +13,11 @@ function health.check()
   end
 
   for _, name in ipairs({ "run", "test" }) do
-    local command = require("tapyr.tasks").resolve(name, root)
+    local command = require("tapyr.tasks").resolve(name, app, name == "run" and 8000 or nil)
     if command then
       vim.health.ok(vim.fs.basename(command[1]) .. " is available")
     else
-      local executable = name == "run" and "shiny" or "pytest"
+      local executable = require("tapyr.tasks").executable(name)
       vim.health.error(executable .. " is not available in .venv or Neovim's PATH")
     end
   end

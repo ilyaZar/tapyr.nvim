@@ -2,7 +2,7 @@
 
 local tapyr = {}
 
-local active_root = nil
+local active_app = nil
 
 ---@class TapyrMappings
 ---@field run? string|false
@@ -49,41 +49,42 @@ function tapyr.attach(bufnr)
   end
 
   if vim.b[bufnr].tapyr_attached then
-    active_root = vim.b[bufnr].tapyr_root
+    active_app = require("tapyr.project").find(bufnr) or active_app
     return
   end
 
-  local root = require("tapyr.project").find_root(bufnr)
-  if not root then
+  local app = require("tapyr.project").find(bufnr)
+  if not app then
     return
   end
 
-  active_root = root
+  active_app = app
   vim.b[bufnr].tapyr_attached = true
-  vim.b[bufnr].tapyr_root = root
 
   map(bufnr, tapyr.config.mappings.run, function()
-    require("tapyr.tasks").run(root)
+    require("tapyr.tasks").run(app)
   end, "Tapyr: run app")
 
   map(bufnr, tapyr.config.mappings.restart, function()
-    require("tapyr.tasks").restart(root)
+    require("tapyr.tasks").restart(app)
   end, "Tapyr: restart app")
 
   map(bufnr, tapyr.config.mappings.test, function()
-    require("tapyr.tasks").test(root)
+    require("tapyr.tasks").test(app)
   end, "Tapyr: test")
 
   map(bufnr, tapyr.config.mappings.panel, function()
-    tapyr.open(root)
+    tapyr.open(app)
   end, "Tapyr: panel")
 end
 
----@param root? string
-function tapyr.open(root)
-  root = root or require("tapyr.project").find_root(0) or active_root or vim.uv.cwd()
+---@param app? TapyrAppDefinition
+function tapyr.open(app)
+  app = app or require("tapyr.project").find(0) or active_app
+  local root = app and app.root or vim.uv.cwd()
+  root = require("tapyr.registry").context(root)
 
-  return require("tapyr.panel").open(root)
+  return require("tapyr.panel").open(root, app)
 end
 
 return tapyr

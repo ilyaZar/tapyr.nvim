@@ -22,9 +22,11 @@ end
 
 local apps = require("tapyr.apps")
 local messages = require("tapyr.messages")
+local registry = require("tapyr.registry")
 local original_find = apps.find
 local original_open_in_browser = apps.open_in_browser
 local original_show = messages.show
+local original_registry_load = registry.load
 
 assert(
   apps.is_public_listener({ "uv", "run", "shiny", "run", "app.py", "--reload" }, 8000),
@@ -75,14 +77,28 @@ assert(vim.fn.exists(":Tapyr") == 2, "Tapyr command is missing")
 
 local fixture = vim.fs.joinpath(vim.fn.getcwd(), "tests", "fixtures", "sample-project", "app.py")
 local fixture_root = vim.fs.dirname(fixture)
+local fixture_app = require("tapyr.project").new(fixture_root)
+local listed_root = vim.fs.joinpath(fixture_root, "apps", "nested")
+local listed_id = vim.fs.joinpath(listed_root, "app.py")
+registry.load = function()
+  return {
+    {
+      id = listed_id,
+      name = "nested",
+      root = listed_root,
+      entrypoint = listed_id,
+    },
+  }, {}
+end
 apps.find = function()
   return {
     {
-      host = "127.0.0.1",
       port = 8000,
       pid = 101,
       launch = "shiny run --reload app.py",
-      project = vim.fs.joinpath(fixture_root, "apps", "nested"),
+      id = listed_id,
+      entrypoint = listed_id,
+      cwd = listed_root,
       start_time = "1001",
       url = "http://127.0.0.1:8000",
     },
@@ -93,12 +109,18 @@ vim.cmd.edit(vim.fn.fnameescape(fixture))
 local app_buf = vim.api.nvim_get_current_buf()
 assert(buffer_has_mapping(app_buf, "Tapyr: panel"), "Shiny buffer mapping is missing")
 assert(buffer_mapping(app_buf, "Tapyr: run app").lhs == "<C-B>", "default run mapping changed")
-assert(buffer_mapping(app_buf, "Tapyr: restart app").lhs == "<C-S-B>", "default restart mapping changed")
+assert(
+  buffer_mapping(app_buf, "Tapyr: restart app").lhs == "<C-S-B>",
+  "default restart mapping changed"
+)
 
 vim.cmd.Tapyr()
 assert(vim.bo.filetype == "tapyr", "panel filetype is missing")
 assert(buffer_mapping(0, "Tapyr: refresh").lhs == "r", "panel refresh mapping is missing")
-assert(buffer_mapping(0, "Tapyr: restart selected app").lhs == "R", "panel restart mapping is missing")
+assert(
+  buffer_mapping(0, "Tapyr: restart selected app").lhs == "R",
+  "panel restart mapping is missing"
+)
 assert(buffer_mapping(0, "Tapyr: stop selected app").lhs == "x", "panel stop mapping is missing")
 assert(buffer_mapping(0, "Tapyr: open selected app").lhs == "o", "panel open mapping is missing")
 
@@ -109,7 +131,9 @@ assert(label == "[Apps]", "Apps tab is not highlighted")
 assert(highlight == "DiagnosticWarn", "active tab does not use the colorscheme warning color")
 local app_lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
 assert(
-  app_lines[5]:find("shiny run --reload app.py", 1, true),
+  app_lines[5]:find("running", 1, true)
+    and app_lines[5]:find("nested", 1, true)
+    and app_lines[5]:find("shiny run --reload app.py", 1, true),
   "Apps view did not show the concise launch command"
 )
 assert(
@@ -152,7 +176,10 @@ vim.api.nvim_feedkeys(vim.keycode("<Tab>"), "x", false)
 local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
 assert(lines[1]:find("[Project]", 1, true), "Project view is missing")
 assert(lines[5]:find("Ctrl+b", 1, true), "Project view did not show the default run mapping")
-assert(lines[6]:find("Ctrl+Shift+b", 1, true), "Project view did not show the default restart mapping")
+assert(
+  lines[6]:find("Ctrl+Shift+b", 1, true),
+  "Project view did not show the default restart mapping"
+)
 label, highlight = active_tab(0)
 assert(label == "[Project]", "Project tab is not highlighted")
 assert(highlight == "DiagnosticWarn", "Project tab highlight changed")
@@ -183,27 +210,28 @@ require("tapyr").setup({
     test = false,
   },
 })
-local custom_buffer = vim.fs.joinpath(
-  vim.fn.getcwd(),
-  "tests",
-  "fixtures",
-  "sample-project",
-  "custom.py"
-)
+local custom_buffer =
+  vim.fs.joinpath(vim.fn.getcwd(), "tests", "fixtures", "sample-project", "custom.py")
 vim.cmd.edit(vim.fn.fnameescape(custom_buffer))
 assert(buffer_mapping(0, "Tapyr: run app").lhs == "\\tb", "custom run mapping was not used")
-assert(buffer_mapping(0, "Tapyr: restart app").lhs == "<C-S-B>", "default restart mapping was not kept")
+assert(
+  buffer_mapping(0, "Tapyr: restart app").lhs == "<C-S-B>",
+  "default restart mapping was not kept"
+)
 assert(not buffer_has_mapping(0, "Tapyr: panel"), "disabled panel mapping was added")
 assert(not buffer_has_mapping(0, "Tapyr: test"), "disabled test mapping was added")
 
-require("tapyr").open(fixture_root)
+require("tapyr").open(fixture_app)
 vim.api.nvim_feedkeys(vim.keycode("<Tab>"), "x", false)
 local custom_project_lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
 assert(
   custom_project_lines[5]:find("<leader>tb", 1, true),
   "Project view did not show the custom run mapping"
 )
-assert(custom_project_lines[7]:find("-", 1, true), "Project view did not show the disabled test mapping")
+assert(
+  custom_project_lines[7]:find("-", 1, true),
+  "Project view did not show the disabled test mapping"
+)
 vim.api.nvim_feedkeys("q", "x", false)
 
 vim.cmd.edit(vim.fn.fnameescape(vim.fs.joinpath(vim.fn.getcwd(), "README.md")))
@@ -212,3 +240,4 @@ assert(not buffer_has_mapping(0, "Tapyr: panel"), "non-Shiny buffer was mapped")
 apps.find = original_find
 apps.open_in_browser = original_open_in_browser
 messages.show = original_show
+registry.load = original_registry_load
