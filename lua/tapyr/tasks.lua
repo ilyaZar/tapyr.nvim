@@ -27,19 +27,15 @@ local function task_is_gone(task)
   return not task or task:is_disposed()
 end
 
-local function show_output(task)
-  vim.defer_fn(function()
-    if task_is_gone(task) or not task:get_bufnr() then
-      return
-    end
-
-    local overseer = get_overseer()
-    if not overseer then
-      return
-    end
-    overseer.run_action(task, "open hsplit")
-    vim.cmd("wincmd p")
-  end, 100)
+local function show_task(task)
+  local overseer = get_overseer()
+  if not overseer then
+    return
+  end
+  overseer.open({
+    enter = false,
+    focus_task_id = task.id,
+  })
 end
 
 ---@param name "run"|"test"
@@ -102,8 +98,8 @@ function tasks.describe(name)
 end
 
 ---@param root string
----@param open_output? boolean
-function tasks.start(root, open_output)
+---@param show_task_list? boolean
+function tasks.start(root, show_task_list)
   local task = new_app_task(root)
   if not task then
     return
@@ -111,8 +107,8 @@ function tasks.start(root, open_output)
 
   app_tasks[root] = task
   task:start()
-  if open_output ~= false then
-    show_output(task)
+  if show_task_list ~= false then
+    show_task(task)
   end
 end
 
@@ -139,7 +135,7 @@ function tasks.run(root)
     task:restart(true)
   end
 
-  show_output(task)
+  show_task(task)
 end
 
 ---@param root string
@@ -156,7 +152,7 @@ function tasks.restart(root)
     task:restart(true)
   end
 
-  show_output(task)
+  show_task(task)
 end
 
 ---@param root string
@@ -185,7 +181,7 @@ function tasks.test(root)
   })
 
   task:start()
-  show_output(task)
+  show_task(task)
 end
 
 return tasks

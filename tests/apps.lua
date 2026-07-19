@@ -106,16 +106,16 @@ local stop_result = true
 apps.stop = function()
   return stop_result
 end
-tasks.start = function(root, open_output)
+tasks.start = function(root, show_task_list)
   started = {
     root = root,
-    open_output = open_output,
+    show_task_list = show_task_list,
   }
 end
 
 apps.restart({ pid = 103, project = "/tmp/current" }, "/tmp/current")
 assert(started.root == "/tmp/current", "current project was not restarted")
-assert(started.open_output == false, "panel restart opened task output")
+assert(started.show_task_list == false, "panel restart opened the Overseer task list")
 
 apps.restart({ pid = 104, project = "/tmp/other" }, "/tmp/current")
 assert(

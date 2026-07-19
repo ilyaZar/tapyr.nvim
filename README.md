@@ -103,6 +103,9 @@ Inside the panel:
 
 Run `:checkhealth tapyr` to verify external dependencies.
 
+Tapyr selects the running task in Overseer without overriding its configured
+task-list layout or output strategy.
+
 ## Project conventions
 
 Tapyr runs `shiny run --reload app.py` and `pytest` from the project's

@@ -2,6 +2,7 @@ local messages = require("tapyr.messages")
 local tasks = require("tapyr.tasks")
 
 local original_constants = package.loaded["overseer.constants"]
+local original_constants_preload = package.preload["overseer.constants"]
 local original_executable = vim.fn.executable
 local original_exepath = vim.fn.exepath
 local original_overseer = package.loaded.overseer
@@ -14,9 +15,11 @@ local status = {
 }
 
 local created = {}
+local opened = {}
 local function new_task(spec)
   local task = {
     disposed = false,
+    id = #created + 1,
     restarts = 0,
     starts = 0,
     status = status.PENDING,
@@ -50,8 +53,8 @@ package.loaded.overseer = {
     created[#created + 1] = task
     return task
   end,
-  run_action = function()
-    error("task output should not open without a buffer")
+  open = function(opts)
+    opened[#opened + 1] = opts
   end,
 }
 package.loaded["overseer.constants"] = { STATUS = status }
@@ -78,6 +81,8 @@ project_executables[project_shiny] = nil
 
 tasks.start("/tmp/start")
 assert(created[#created].starts == 1, "start task was not started")
+assert(opened[#opened].enter == false, "Overseer task list took focus")
+assert(opened[#opened].focus_task_id == created[#created].id, "started task was not selected")
 assert(created[#created].spec.cwd == "/tmp/start", "start task used the wrong root")
 assert(created[#created].spec.cmd[1] == "/usr/bin/shiny", "start task used the wrong executable")
 assert(created[#created].spec.cmd[3] == "--reload", "start task did not enable reload")
@@ -89,6 +94,7 @@ assert(
 tasks.run("/tmp/run")
 local run_task = created[#created]
 assert(run_task.starts == 1, "pending task was not started")
+assert(opened[#opened].focus_task_id == run_task.id, "run task was not selected")
 
 run_task.status = "success"
 tasks.run("/tmp/run")
@@ -108,6 +114,7 @@ assert(restart_task.restarts == 1, "existing task was not restarted")
 tasks.test("/tmp/test")
 local test_task = created[#created]
 assert(test_task.starts == 1, "test task was not started")
+assert(opened[#opened].focus_task_id == test_task.id, "test task was not selected")
 assert(test_task.spec.cwd == "/tmp/test", "test task used the wrong root")
 assert(test_task.spec.cmd[1] == "/usr/bin/pytest", "test task used the wrong command")
 assert(test_task.spec.env.PYTHONDONTWRITEBYTECODE == "1", "test task allowed bytecode writes")
@@ -127,8 +134,30 @@ assert(
 )
 
 vim.fn.exepath = function(command)
+  if command == "pytest" then
+    return ""
+  end
   return "/usr/bin/" .. command
 end
+tasks.test("/tmp/missing-pytest")
+assert(
+  messages_seen[#messages_seen]:find("pytest is not available", 1, true),
+  "missing pytest error was not shown"
+)
+
+vim.fn.exepath = function(command)
+  return "/usr/bin/" .. command
+end
+package.loaded["overseer.constants"] = nil
+package.preload["overseer.constants"] = function()
+  error("overseer constants unavailable")
+end
+tasks.run("/tmp/missing-overseer-constants")
+assert(
+  messages_seen[#messages_seen] == "Overseer is required to run apps and tests",
+  "missing Overseer constants error was not shown"
+)
+
 package.loaded.overseer = nil
 package.preload.overseer = function()
   error("overseer unavailable")
@@ -145,4 +174,5 @@ vim.fn.executable = original_executable
 vim.fn.exepath = original_exepath
 package.loaded.overseer = original_overseer
 package.loaded["overseer.constants"] = original_constants
+package.preload["overseer.constants"] = original_constants_preload
 package.preload.overseer = original_preload
