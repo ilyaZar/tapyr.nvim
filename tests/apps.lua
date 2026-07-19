@@ -49,6 +49,28 @@ assert(
 )
 assert(not apps.is_shiny_command({ "python", "app.py" }), "generic app.py command was accepted")
 assert(not apps.is_shiny_command({ "uvicorn", "shiny_service:app" }), "unrelated command was accepted")
+assert(
+  apps.command_label({
+    "/tmp/project/.venv/bin/python",
+    "/tmp/project/.venv/bin/shiny",
+    "run",
+    "--reload",
+    "/tmp/project/app.py",
+  }) == "shiny run --reload app.py",
+  "direct Shiny command label kept paths"
+)
+assert(
+  apps.command_label({
+    "/usr/bin/uv",
+    "run",
+    "/tmp/project/.venv/bin/shiny",
+    "run",
+    "--reload",
+    "app.py",
+  }) == "uv run shiny run --reload app.py",
+  "uv command label lost its launcher"
+)
+assert(apps.command_label({ "python", "app.py" }) == "-", "unrelated command received a label")
 
 assert(apps.stop(current_process), "valid app was not stopped")
 assert(kills == 1, "valid app did not reach kill")

@@ -9,6 +9,7 @@ local messages = require("tapyr.messages")
 ---@field pid? integer
 ---@field argv? string[]
 ---@field command? string
+---@field launch string
 ---@field cwd? string
 ---@field project? string
 ---@field start_time string
@@ -160,6 +161,33 @@ function apps.is_shiny_command(argv)
   return shiny_run_index(argv) ~= nil
 end
 
+---@param argv? string[]
+---@return string
+function apps.command_label(argv)
+  local run_index = shiny_run_index(argv)
+  if not run_index then
+    return "-"
+  end
+
+  local start_index = run_index - 1
+  for index = start_index - 1, 1, -1 do
+    if vim.fs.basename(argv[index]):lower() == "uv" then
+      start_index = index
+      break
+    end
+  end
+
+  local command = {}
+  for index = start_index, #argv do
+    local argument = argv[index]
+    if argument:sub(1, 1) == "/" then
+      argument = vim.fs.basename(argument)
+    end
+    command[#command + 1] = argument
+  end
+  return table.concat(command, " ")
+end
+
 ---@param pid integer
 ---@return TapyrProcess?
 function apps.inspect(pid)
@@ -295,6 +323,7 @@ function apps.find()
           pid = process.pid,
           argv = process.argv,
           command = process.command,
+          launch = apps.command_label(process.argv),
           cwd = process.cwd,
           project = project,
           start_time = process.start_time,

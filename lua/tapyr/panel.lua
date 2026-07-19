@@ -78,11 +78,25 @@ local function footer()
 end
 
 local function title(root)
+  local project = vim.fs.basename(root or uv.cwd())
   return {
     { " Tapyr ", "FloatTitle" },
-    { text.shorten(root or uv.cwd(), 52), "Comment" },
+    { text.shorten(project, 52), "Comment" },
     { " ", "FloatTitle" },
   }
+end
+
+local function project_label(project, root)
+  if not project then
+    return "-"
+  end
+  if project == root then
+    return vim.fs.basename(root)
+  end
+  if vim.startswith(project, root .. "/") then
+    return vim.fs.basename(root) .. project:sub(#root + 1)
+  end
+  return vim.fs.basename(project)
 end
 
 local function draw_apps(state)
@@ -98,7 +112,7 @@ local function draw_apps(state)
       .. " "
       .. text.column("pid", 8)
       .. " "
-      .. text.column("command", 32)
+      .. text.column("launch", 32)
       .. " project",
     string.rep("-", 86),
   }
@@ -128,9 +142,9 @@ local function draw_apps(state)
       .. " "
       .. text.column(app.pid or "-", 8)
       .. " "
-      .. text.column(app.command or "-", 32)
+      .. text.column(app.launch or "-", 32)
       .. " "
-      .. text.shorten(app.project or "-", 38)
+      .. text.shorten(project_label(app.project, state.root), 38)
     if not state.first_item then
       state.first_item = line_number
     end
@@ -250,6 +264,12 @@ local function draw(state)
     end_col = end_col,
     hl_group = "DiagnosticWarn",
   })
+  if view ~= "help" then
+    vim.api.nvim_buf_set_extmark(state.buf, highlight_namespace, 2, 0, {
+      end_col = #lines[3],
+      hl_group = { "DiagnosticOk", "Bold" },
+    })
+  end
 
   if state.first_item then
     pcall(vim.api.nvim_win_set_cursor, state.win, { state.first_item, 0 })

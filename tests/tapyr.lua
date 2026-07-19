@@ -21,6 +21,7 @@ local function active_tab(bufnr)
 end
 
 local apps = require("tapyr.apps")
+local original_find = apps.find
 
 assert(
   apps.is_public_listener({ "uv", "run", "shiny", "run", "app.py", "--reload" }, 8000),
@@ -70,6 +71,20 @@ assert(not apps.is_public_listener({
 assert(vim.fn.exists(":Tapyr") == 2, "Tapyr command is missing")
 
 local fixture = vim.fs.joinpath(vim.fn.getcwd(), "tests", "fixtures", "sample-project", "app.py")
+local fixture_root = vim.fs.dirname(fixture)
+apps.find = function()
+  return {
+    {
+      host = "127.0.0.1",
+      port = 8000,
+      pid = 101,
+      launch = "shiny run --reload app.py",
+      project = vim.fs.joinpath(fixture_root, "apps", "nested"),
+      start_time = "1001",
+      url = "http://127.0.0.1:8000",
+    },
+  }
+end
 vim.cmd.edit(vim.fn.fnameescape(fixture))
 
 local app_buf = vim.api.nvim_get_current_buf()
@@ -89,6 +104,20 @@ assert(first_line:find("[Apps]", 1, true), "Apps view is missing")
 local label, highlight = active_tab(0)
 assert(label == "[Apps]", "Apps tab is not highlighted")
 assert(highlight == "DiagnosticWarn", "active tab does not use the colorscheme warning color")
+local app_lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+assert(
+  app_lines[5]:find("shiny run --reload app.py", 1, true),
+  "Apps view did not show the concise launch command"
+)
+assert(
+  app_lines[5]:find("sample-project/apps/nested", 1, true),
+  "Apps view did not preserve the nested project path"
+)
+local namespace = vim.api.nvim_get_namespaces()["tapyr.panel"]
+local header_marks = vim.api.nvim_buf_get_extmarks(0, namespace, { 2, 0 }, { 2, -1 }, {
+  details = true,
+})
+assert(header_marks[1][4].hl_group == "Bold", "Apps column headings are not bold")
 
 vim.api.nvim_feedkeys(vim.keycode("<Tab>"), "x", false)
 local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
@@ -136,3 +165,5 @@ assert(not buffer_has_mapping(0, "Tapyr: panel"), "disabled panel mapping was ad
 
 vim.cmd.edit(vim.fn.fnameescape(vim.fs.joinpath(vim.fn.getcwd(), "README.md")))
 assert(not buffer_has_mapping(0, "Tapyr: panel"), "non-Shiny buffer was mapped")
+
+apps.find = original_find
