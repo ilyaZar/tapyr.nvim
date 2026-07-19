@@ -134,8 +134,6 @@ local function draw_apps(state)
     string.rep("-", 86),
   }
 
-  state.items_by_line = {}
-
   if vim.tbl_isempty(found_apps) then
     lines[#lines + 1] = "No local Shiny apps found"
     if note then
@@ -143,7 +141,6 @@ local function draw_apps(state)
     end
     lines[#lines + 1] = ""
     lines[#lines + 1] = "Press Ctrl+b in a Shiny project to start one"
-    state.first_item = nil
     return lines
   end
 
@@ -179,9 +176,6 @@ local function draw_project(state)
     string.rep("-", 74),
   }
 
-  state.items_by_line = {}
-  state.first_item = nil
-
   for _, item in ipairs(project_items) do
     if item.kind == "task" then
       lines[#lines + 1] = text.column(item.name, 18)
@@ -210,8 +204,6 @@ end
 
 local function draw_help(state)
   local found_apps, note = apps.find()
-  state.items_by_line = {}
-  state.first_item = nil
 
   local lines = {
     view_bar(state.view),
