@@ -1,16 +1,17 @@
 local tasks = {}
 
 local messages = require("tapyr.messages")
+local project = require("tapyr.project")
 local app_tasks = {}
+local assigned_ports = {}
+local reserved_ports = {}
 
 local tools = {
   run = {
     executable = "shiny",
-    arguments = { "run", "--reload", "app.py" },
   },
   test = {
     executable = "pytest",
-    arguments = {},
   },
 }
 
@@ -35,14 +36,30 @@ local function show_task(task)
 end
 
 ---@param name "run"|"test"
----@param root string
+---@param app TapyrAppDefinition
+---@param port? integer
 ---@return string[]?
-function tasks.resolve(name, root)
+function tasks.resolve(name, app, port)
   local tool = tools[name]
-  local project_executable = vim.fs.joinpath(root, ".venv", "bin", tool.executable)
+  local root = app.root
+  local directory = root
+  local project_executable
+  while directory do
+    local candidate = vim.fs.joinpath(directory, ".venv", "bin", tool.executable)
+    if vim.fn.executable(candidate) == 1 then
+      project_executable = candidate
+      break
+    end
+    local parent = vim.fs.dirname(directory)
+    if parent == directory then
+      break
+    end
+    directory = parent
+  end
+
   local executable
 
-  if vim.fn.executable(project_executable) == 1 then
+  if project_executable then
     executable = project_executable
   else
     executable = vim.fn.exepath(tool.executable)
@@ -52,46 +69,146 @@ function tasks.resolve(name, root)
     return nil
   end
 
-  return vim.list_extend({ executable }, tool.arguments)
+  if name == "test" then
+    return { executable }
+  end
+  if not port then
+    return nil
+  end
+
+  local entrypoint = vim.fs.relpath(root, app.entrypoint) or app.entrypoint
+  return {
+    executable,
+    "run",
+    "--reload",
+    "--port",
+    tostring(port),
+    entrypoint,
+  }
 end
 
-local function missing_tool(name, root)
+---@param name "run"|"test"
+---@return string
+function tasks.executable(name)
+  return tools[name].executable
+end
+
+local function missing_tool(name, app)
   messages.show(
-    tools[name].executable
-      .. " is not available in "
-      .. vim.fs.joinpath(root, ".venv", "bin")
-      .. " or Neovim's PATH",
+    tools[name].executable .. " is not available in " .. app.root .. " or Neovim's PATH",
     vim.log.levels.ERROR
   )
 end
 
-local function new_app_task(root)
-  local command = tasks.resolve("run", root)
+local function listening_ports()
+  local used = {}
+  if vim.fn.executable("ss") ~= 1 then
+    return used
+  end
+
+  local result = vim.system({ "ss", "-H", "-ltn" }, { text = true }):wait()
+  if result.code ~= 0 then
+    return used
+  end
+
+  for _, line in ipairs(vim.split(result.stdout or "", "\n", { trimempty = true })) do
+    local address = vim.split(line, "%s+")[4]
+    local port = address and tonumber(address:match(":(%d+)$"))
+    if port then
+      used[port] = true
+    end
+  end
+  return used
+end
+
+local function assign_port(app)
+  local used = listening_ports()
+  local assigned = assigned_ports[app.id]
+  if assigned then
+    if used[assigned] then
+      messages.show("Port " .. assigned .. " is already in use", vim.log.levels.ERROR)
+      return nil
+    end
+    return assigned
+  end
+
+  local port = app.port
+  if port then
+    local owner = reserved_ports[port]
+    if used[port] or (owner and owner ~= app.id) then
+      messages.show("Port " .. port .. " is already in use", vim.log.levels.ERROR)
+      return nil
+    end
+  else
+    for candidate = 8000, 8199 do
+      if not used[candidate] and not reserved_ports[candidate] then
+        port = candidate
+        break
+      end
+    end
+    if not port then
+      messages.show("No free Tapyr port found from 8000 to 8199", vim.log.levels.ERROR)
+      return nil
+    end
+  end
+
+  assigned_ports[app.id] = port
+  reserved_ports[port] = app.id
+  return port
+end
+
+local function release_port(app)
+  local port = assigned_ports[app.id]
+  assigned_ports[app.id] = nil
+  if port and reserved_ports[port] == app.id then
+    reserved_ports[port] = nil
+  end
+end
+
+local function new_app_task(app)
+  local port = assign_port(app)
+  if not port then
+    return nil
+  end
+
+  local command = tasks.resolve("run", app, port)
   if not command then
-    missing_tool("run", root)
+    release_port(app)
+    missing_tool("run", app)
     return nil
   end
 
   local overseer = get_overseer()
   if not overseer then
+    release_port(app)
     return nil
   end
 
   return overseer.new_task({
-    name = "Tapyr: run app",
+    name = "Tapyr: " .. app.name,
     cmd = command,
-    cwd = root,
+    cwd = app.root,
     env = { PYTHONDONTWRITEBYTECODE = "1" },
+    metadata = {
+      tapyr_app = app.id,
+      tapyr_port = port,
+    },
     components = { "default" },
   })
 end
 
-local function ensure_app_task(root)
-  local task = app_tasks[root]
+---@param app TapyrAppDefinition
+---@return integer?
+function tasks.port(app)
+  return assigned_ports[app.id] or app.port
+end
+
+local function ensure_app_task(app)
+  local task = app_tasks[app.id]
   local created = not task or task:is_disposed()
   if created then
-    task = new_app_task(root)
-    app_tasks[root] = task
+    task = new_app_task(app)
+    app_tasks[app.id] = task
   end
 
   return task, created
@@ -101,14 +218,18 @@ end
 ---@return string
 function tasks.describe(name)
   local tool = tools[name]
-  return table.concat(vim.list_extend({ tool.executable }, tool.arguments), " ")
+  if name == "run" then
+    return tool.executable .. " run --reload --port <auto> app.py"
+  end
+  return tool.executable
 end
 
----@param root string
-function tasks.run(root)
-  local task = ensure_app_task(root)
+---@param app TapyrAppDefinition
+---@return boolean
+function tasks.run(app)
+  local task = ensure_app_task(app)
   if not task then
-    return
+    return false
   end
 
   local constants = require("overseer.constants")
@@ -120,14 +241,16 @@ function tasks.run(root)
   end
 
   show_task(task)
+  return true
 end
 
----@param root string
+---@param app TapyrAppDefinition
 ---@param show_task_list? boolean
-function tasks.restart(root, show_task_list)
-  local task, created = ensure_app_task(root)
+---@return boolean
+function tasks.restart(app, show_task_list)
+  local task, created = ensure_app_task(app)
   if not task then
-    return
+    return false
   end
 
   if created then
@@ -139,26 +262,29 @@ function tasks.restart(root, show_task_list)
   if show_task_list ~= false then
     show_task(task)
   end
+  return true
 end
 
----@param root string
-function tasks.test(root)
-  local command = tasks.resolve("test", root)
+---@param app TapyrAppDefinition
+---@return boolean
+function tasks.test(app)
+  local command = tasks.resolve("test", app)
   if not command then
-    missing_tool("test", root)
-    return
+    missing_tool("test", app)
+    return false
   end
 
   local overseer = get_overseer()
   if not overseer then
-    return
+    return false
   end
 
   local task = overseer.new_task({
-    name = "Tapyr: test app",
+    name = "Tapyr: test " .. app.name,
     cmd = command,
-    cwd = root,
+    cwd = project.root(app.root),
     env = { PYTHONDONTWRITEBYTECODE = "1" },
+    metadata = { tapyr_app = app.id },
     components = {
       { "on_output_quickfix", open_on_match = true, set_diagnostics = true },
       "on_result_diagnostics",
@@ -168,6 +294,7 @@ function tasks.test(root)
 
   task:start()
   show_task(task)
+  return true
 end
 
 return tasks

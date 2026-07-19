@@ -46,29 +46,35 @@ assert(
   "Python Shiny command was rejected"
 )
 assert(not apps.is_shiny_command({ "python", "app.py" }), "generic app.py command was accepted")
-assert(not apps.is_shiny_command({ "uvicorn", "shiny_service:app" }), "unrelated command was accepted")
 assert(
-  apps.launch_label({
-    "/tmp/project/.venv/bin/python",
-    "/tmp/project/.venv/bin/shiny",
-    "run",
-    "--reload",
-    "/tmp/project/app.py",
-  }) == "shiny run --reload app.py",
-  "direct Shiny command label kept paths"
+  not apps.is_shiny_command({ "uvicorn", "shiny_service:app" }),
+  "unrelated command was accepted"
 )
-assert(
-  apps.launch_label({
-    "/usr/bin/uv",
-    "run",
-    "/tmp/project/.venv/bin/shiny",
-    "run",
-    "--reload",
-    "app.py",
-  }) == "uv run shiny run --reload app.py",
-  "uv command label lost its launcher"
-)
+assert(apps.launch_label({
+  "/tmp/project/.venv/bin/python",
+  "/tmp/project/.venv/bin/shiny",
+  "run",
+  "--reload",
+  "/tmp/project/app.py",
+}) == "shiny run --reload app.py", "direct Shiny command label kept paths")
+assert(apps.launch_label({
+  "/usr/bin/uv",
+  "run",
+  "/tmp/project/.venv/bin/shiny",
+  "run",
+  "--reload",
+  "app.py",
+}) == "uv run shiny run --reload app.py", "uv command label lost its launcher")
 assert(apps.launch_label({ "python", "app.py" }) == "-", "unrelated command received a label")
+assert(
+  apps.entrypoint({ "shiny", "run", "--reload", "/tmp/project/main.py:app" }, "/tmp/project")
+    == "/tmp/project/main.py",
+  "absolute Shiny entrypoint was not detected"
+)
+assert(
+  apps.entrypoint({ "shiny", "run", "--reload", "app.py" }, "/tmp/project") == "/tmp/project/app.py",
+  "relative Shiny entrypoint was not detected"
+)
 
 assert(apps.stop(current_process), "valid app was not stopped")
 assert(kills == 1, "valid app did not reach kill")
@@ -92,7 +98,7 @@ end
 kill_code = 1
 assert(not apps.stop(current_process), "failed kill was reported as successful")
 
-apps.restart(nil, "/tmp/current")
+apps.restart(nil)
 assert(messages_seen[#messages_seen] == "Select an app first", "missing app warning was not shown")
 
 vim.defer_fn = function(callback)
@@ -106,16 +112,30 @@ apps.stop = function()
 end
 tasks.restart = function(root, show_task_list)
   started = {
-    root = root,
+    app = root,
     show_task_list = show_task_list,
   }
 end
 
-apps.restart({ pid = 103, project = "/tmp/current" }, "/tmp/current")
-assert(started.root == "/tmp/current", "current project was not restarted")
+local current_definition = {
+  id = "/tmp/current/app.py",
+  name = "current",
+  root = "/tmp/current",
+  entrypoint = "/tmp/current/app.py",
+}
+apps.restart({
+  definition = current_definition,
+  session = { pid = 103 },
+})
+assert(started.app == current_definition, "tracked app was not restarted")
 assert(started.show_task_list == false, "panel restart opened the Overseer task list")
 
-apps.restart({ pid = 104, project = "/tmp/other" }, "/tmp/current")
+apps.restart({
+  state = "external",
+  name = "other",
+  root = "/tmp/other",
+  session = { pid = 104 },
+})
 assert(
   messages_seen[#messages_seen] == "Cannot determine how this app was started",
   "missing command warning was not shown"
@@ -128,11 +148,15 @@ vim.fn.jobstart = function()
   return 1
 end
 apps.restart({
-  pid = 105,
-  project = "/tmp/other",
-  cwd = "/tmp/other",
-  argv = { "shiny", "run", "app.py" },
-}, "/tmp/current")
+  state = "external",
+  name = "other",
+  root = "/tmp/other",
+  session = {
+    pid = 105,
+    cwd = "/tmp/other",
+    argv = { "shiny", "run", "app.py" },
+  },
+})
 assert(jobs_started == 0, "restart continued after a failed stop")
 
 stop_result = true
@@ -141,26 +165,64 @@ vim.fn.jobstart = function()
   return 1
 end
 apps.restart({
-  pid = 106,
-  project = "/tmp/other",
-  cwd = "/tmp/other",
-  argv = { "shiny", "run", "app.py" },
-  launch = "shiny run app.py",
-}, "/tmp/current")
+  state = "external",
+  name = "other",
+  root = "/tmp/other",
+  session = {
+    pid = 106,
+    cwd = "/tmp/other",
+    argv = { "shiny", "run", "app.py" },
+    launch = "shiny run app.py",
+  },
+})
 assert(jobs_started == 1, "external app was not restarted")
 
 vim.fn.jobstart = function()
   return 0
 end
 apps.restart({
-  pid = 107,
-  project = "/tmp/other",
-  argv = { "shiny", "run", "app.py" },
-}, "/tmp/current")
+  state = "external",
+  name = "other",
+  root = "/tmp/other",
+  session = {
+    pid = 107,
+    argv = { "shiny", "run", "app.py" },
+  },
+})
 assert(
   messages_seen[#messages_seen]:find("Could not restart", 1, true),
   "restart error was not shown"
 )
+
+local definitions = {
+  current_definition,
+  {
+    id = "/tmp/stopped/app.py",
+    name = "stopped",
+    root = "/tmp/stopped",
+    entrypoint = "/tmp/stopped/app.py",
+  },
+}
+local running = {
+  {
+    id = current_definition.id,
+    name = "current",
+    cwd = current_definition.root,
+    port = 8000,
+  },
+  {
+    id = "/tmp/external/app.py",
+    name = "external",
+    cwd = "/tmp/external",
+    port = 8001,
+  },
+}
+local rows = apps.merge(definitions, running)
+assert(#rows == 3, "tracked and external apps were not merged")
+assert(rows[1].state == "running", "running tracked app state changed")
+assert(rows[1].session == running[1], "running tracked session was lost")
+assert(rows[2].state == "stopped", "stopped tracked app state changed")
+assert(rows[3].state == "external", "untracked app was not marked external")
 
 local opened_url
 vim.ui.open = function(url)

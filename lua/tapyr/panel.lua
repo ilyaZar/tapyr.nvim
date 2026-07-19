@@ -2,6 +2,7 @@ local panel = {}
 
 local apps = require("tapyr.apps")
 local messages = require("tapyr.messages")
+local registry = require("tapyr.registry")
 local tasks = require("tapyr.tasks")
 local text = require("tapyr.text")
 
@@ -81,10 +82,12 @@ local function footer()
     { " " },
     { "Tab", "DiagnosticOk" },
     { ":views  " },
+    { "[n]", "DiagnosticOk" },
+    { " new  " },
     { "[r]", "DiagnosticOk" },
     { " refresh  " },
     { "[R]", "DiagnosticOk" },
-    { " restart  " },
+    { " start/restart  " },
     { "[x]", "DiagnosticOk" },
     { " stop  " },
     { "[o]", "DiagnosticOk" },
@@ -95,35 +98,47 @@ local function footer()
 end
 
 local function title(root)
-  local project = vim.fs.basename(root or vim.uv.cwd())
   return {
     { " Tapyr ", "FloatTitle" },
-    { text.shorten(project, 52), "Comment" },
+    { text.shorten(vim.fs.basename(root or vim.uv.cwd()), 52), "Comment" },
     { " ", "FloatTitle" },
   }
 end
 
-local function project_label(project, root)
-  if not project then
+local function path_label(path, root)
+  if not path or path == "" then
     return "-"
   end
-  if project == root then
+  if path == root then
     return vim.fs.basename(root)
   end
-  if vim.startswith(project, root .. "/") then
-    return vim.fs.basename(root) .. project:sub(#root + 1)
+  if vim.startswith(path, root .. "/") then
+    return vim.fs.basename(root) .. path:sub(#root + 1)
   end
-  return vim.fs.basename(project)
+  return vim.fs.basename(path)
+end
+
+local function row_key(row)
+  if row.definition then
+    return row.definition.id
+  end
+  if row.session then
+    return row.session.id or (row.session.pid .. ":" .. row.session.start_time)
+  end
 end
 
 local function draw_apps(state)
-  local found_apps, note = apps.find()
-  state.apps = found_apps
+  local definitions, registry_notes = registry.load(state.root, state.current_app)
+  local running, process_note = apps.find()
+  local rows = apps.merge(definitions, running)
+  state.rows = rows
 
   local lines = {
     view_bar(state.view),
     "",
-    text.column("host", 16)
+    text.column("state", 9)
+      .. " "
+      .. text.column("app", 20)
       .. " "
       .. text.column("port", 6)
       .. " "
@@ -131,37 +146,46 @@ local function draw_apps(state)
       .. " "
       .. text.column("launch", 32)
       .. " project",
-    string.rep("-", 86),
+    string.rep("-", 100),
   }
 
-  if vim.tbl_isempty(found_apps) then
-    lines[#lines + 1] = "No local Shiny apps found"
-    if note then
+  if vim.tbl_isempty(rows) then
+    lines[#lines + 1] = "No tracked or running Shiny apps found"
+    if process_note then
+      lines[#lines + 1] = process_note
+    end
+    for _, note in ipairs(registry_notes) do
       lines[#lines + 1] = note
     end
-    lines[#lines + 1] = ""
-    lines[#lines + 1] = "Press Ctrl+b in a Shiny project to start one"
     return lines
   end
 
-  for _, app in ipairs(found_apps) do
+  for _, row in ipairs(rows) do
+    local session = row.session
     local line_number = #lines + 1
     state.items_by_line[line_number] = {
       kind = "app",
-      app = app,
+      row = row,
     }
-    lines[#lines + 1] = text.column(app.host, 16)
-      .. " "
-      .. text.column(app.port, 6)
-      .. " "
-      .. text.column(app.pid or "-", 8)
-      .. " "
-      .. text.column(app.launch or "-", 32)
-      .. " "
-      .. text.shorten(project_label(app.project, state.root), 38)
-    if not state.first_item then
-      state.first_item = line_number
+    local key = row_key(row)
+    if key then
+      state.line_by_key[key] = line_number
     end
+    lines[#lines + 1] = text.column(row.state, 9)
+      .. " "
+      .. text.column(row.name, 20)
+      .. " "
+      .. text.column(
+        session and session.port or row.definition and tasks.port(row.definition) or "-",
+        6
+      )
+      .. " "
+      .. text.column(session and session.pid or "-", 8)
+      .. " "
+      .. text.column(session and session.launch or "-", 32)
+      .. " "
+      .. text.shorten(path_label(row.root, state.root), 34)
+    state.first_item = state.first_item or line_number
   end
 
   return lines
@@ -169,6 +193,7 @@ end
 
 local function draw_project(state)
   local mappings = require("tapyr").config.mappings
+  local app = state.current_app
   local lines = {
     view_bar(state.view),
     "",
@@ -183,9 +208,14 @@ local function draw_project(state)
         .. text.column(mapping_label(mappings[item.mapping]), 14)
         .. " "
         .. item.command
-    elseif item.kind == "path" then
+    else
       local line_number = #lines + 1
-      local path = vim.fs.joinpath(state.root, item.path)
+      local path
+      if item.path == "app.py" and app then
+        path = app.entrypoint
+      else
+        path = require("tapyr.project").file(app and app.root or state.root, item.path)
+      end
       state.items_by_line[line_number] = {
         kind = "path",
         path = path,
@@ -203,28 +233,30 @@ local function draw_project(state)
 end
 
 local function draw_help(state)
-  local found_apps, note = apps.find()
-
+  local definitions, registry_notes = registry.load(state.root, state.current_app)
+  local running, process_note = apps.find()
   local lines = {
     view_bar(state.view),
     "",
     "keys",
     "  Tab       change view",
+    "  n         create an app from the configured template",
     "  r         refresh apps",
-    "  R/x/o     restart, stop, or open the selected app",
+    "  R         start or restart the selected app",
+    "  x/o       stop or open the selected app",
     "  Enter     open a file from Project",
     "  q/Esc     close",
     "",
-    "project",
-    "  apps found: " .. #found_apps,
-    "  project: " .. state.root,
-    "",
-    "notes",
-    "  app details come from /proc",
-    "  restart uses the default command for this project",
+    "apps",
+    "  tracked: " .. #definitions,
+    "  running: " .. #running,
+    "  context: " .. state.root,
   }
 
-  if note then
+  if process_note then
+    lines[#lines + 1] = "  " .. process_note
+  end
+  for _, note in ipairs(registry_notes) do
     lines[#lines + 1] = "  " .. note
   end
 
@@ -240,13 +272,13 @@ local function current_item(state)
   return state.items_by_line and state.items_by_line[line_number] or nil
 end
 
-local function selected_app(state)
+local function selected_row(state)
   local item = current_item(state)
-  if not item or not item.app then
+  if not item or not item.row then
     messages.show("Select an app first", vim.log.levels.WARN)
     return nil
   end
-  return item.app
+  return item.row
 end
 
 local function close(state)
@@ -258,8 +290,12 @@ local function close(state)
   end
 end
 
-local function draw(state)
+local function draw(state, keep_selection)
+  local item = keep_selection and current_item(state) or nil
+  local selected_key = item and item.row and row_key(item.row) or nil
+
   state.items_by_line = {}
+  state.line_by_key = {}
   state.first_item = nil
 
   local view = views[state.view].key
@@ -290,8 +326,9 @@ local function draw(state)
     })
   end
 
-  if state.first_item then
-    pcall(vim.api.nvim_win_set_cursor, state.win, { state.first_item, 0 })
+  local target_line = selected_key and state.line_by_key[selected_key] or state.first_item
+  if target_line then
+    pcall(vim.api.nvim_win_set_cursor, state.win, { target_line, 0 })
   else
     pcall(vim.api.nvim_win_set_cursor, state.win, { 1, 0 })
   end
@@ -301,23 +338,31 @@ local function is_open(state)
   return state.win and vim.api.nvim_win_is_valid(state.win)
 end
 
-local function same_app(left, right)
-  return left.pid == right.pid and left.start_time == right.start_time
+local function same_session(left, right)
+  return left and right and left.pid == right.pid and left.start_time == right.start_time
 end
 
-local function has_app(found, expected)
-  for _, app in ipairs(found) do
-    if same_app(app, expected) then
+local function row_for_id(rows, id)
+  for _, row in ipairs(rows) do
+    if row.definition and row.definition.id == id then
+      return row
+    end
+  end
+end
+
+local function has_session(rows, expected)
+  for _, row in ipairs(rows) do
+    if same_session(row.session, expected) then
       return true
     end
   end
   return false
 end
 
-local function has_replacement(found, previous)
-  local project = previous.project or previous.cwd
-  for _, app in ipairs(found) do
-    if (app.project or app.cwd) == project and not same_app(app, previous) then
+local function has_replacement(rows, previous)
+  for _, row in ipairs(rows) do
+    local session = row.session
+    if session and session.id == previous.id and not same_session(session, previous) then
       return true
     end
   end
@@ -329,8 +374,8 @@ local function refresh_until(state, done, remaining)
     return
   end
 
-  draw(state)
-  if done(state.apps) or remaining <= 1 then
+  draw(state, true)
+  if done(state.rows or {}) or remaining <= 1 then
     return
   end
 
@@ -364,14 +409,14 @@ local function map(state, lhs, callback, desc)
   vim.keymap.set("n", lhs, callback, {
     buffer = state.buf,
     desc = desc,
-    noremap = true,
     silent = true,
   })
 end
 
 ---@param root string
+---@param current_app? TapyrAppDefinition
 ---@return table
-function panel.open(root)
+function panel.open(root, current_app)
   local editor_w = vim.o.columns
   local editor_h = vim.o.lines
   local max_width = math.max(editor_w - 4, 1)
@@ -386,17 +431,12 @@ function panel.open(root)
   local buf = vim.api.nvim_create_buf(false, true)
   local state = {
     root = root,
+    current_app = current_app,
     buf = buf,
-    win = nil,
     view = 1,
-    items_by_line = {},
-    apps = {},
-    first_item = nil,
   }
 
-  vim.api.nvim_set_option_value("buftype", "nofile", { buf = buf })
   vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = buf })
-  vim.api.nvim_set_option_value("swapfile", false, { buf = buf })
   vim.api.nvim_set_option_value("filetype", "tapyr", { buf = buf })
 
   local win = vim.api.nvim_open_win(buf, true, {
@@ -428,29 +468,48 @@ function panel.open(root)
   map(state, "<CR>", function()
     open_project_file(state)
   end, "Tapyr: open project file")
+  map(state, "n", function()
+    require("tapyr.create").prompt(state.root, function()
+      close(state)
+    end)
+  end, "Tapyr: create app")
   map(state, "r", function()
-    draw(state)
+    draw(state, true)
   end, "Tapyr: refresh")
   map(state, "R", function()
-    local app = selected_app(state)
-    if app and apps.restart(app, state.root) then
-      refresh_until(state, function(found)
-        return not has_app(found, app) and has_replacement(found, app)
+    local selected = selected_row(state)
+    local previous = selected and selected.session
+    if selected and apps.restart(selected) then
+      refresh_until(state, function(rows)
+        if selected.definition then
+          local current = row_for_id(rows, selected.definition.id)
+          return current and current.session and not same_session(current.session, previous)
+        end
+        return previous and not has_session(rows, previous) and has_replacement(rows, previous)
       end, 12)
     end
   end, "Tapyr: restart selected app")
   map(state, "x", function()
-    local app = selected_app(state)
-    if app and apps.stop(app) then
-      refresh_until(state, function(found)
-        return not has_app(found, app)
+    local selected = selected_row(state)
+    local session = selected and selected.session
+    if not session then
+      if selected then
+        messages.show(selected.name .. " is not running", vim.log.levels.WARN)
+      end
+      return
+    end
+    if apps.stop(session) then
+      refresh_until(state, function(rows)
+        return not has_session(rows, session)
       end, 12)
     end
   end, "Tapyr: stop selected app")
   map(state, "o", function()
-    local app = selected_app(state)
-    if app then
-      apps.open_in_browser(app.url)
+    local selected = selected_row(state)
+    if selected and selected.session then
+      apps.open_in_browser(selected.session.url)
+    elseif selected then
+      messages.show(selected.name .. " is not running", vim.log.levels.WARN)
     end
   end, "Tapyr: open selected app")
   map(state, "q", function()

@@ -1,4 +1,6 @@
 dofile("tests/tapyr.lua")
+dofile("tests/create.lua")
+dofile("tests/registry.lua")
 dofile("tests/apps.lua")
 dofile("tests/tasks.lua")
 dofile("tests/health.lua")

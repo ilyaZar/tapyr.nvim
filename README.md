@@ -18,6 +18,10 @@ The `tapyr.nvim` plugin provides several QoL enhancements that help
 finds projects from an `app.py` import, runs apps and tests through Overseer,
 and shows local apps in a small floating panel.
 
+The panel can also track several apps from one workspace or from unrelated
+directories. Apps started through Tapyr receive their own Overseer task, output
+buffer, and local port.
+
 It works with regular Shiny projects, including Appsilon's
 [Tapyr template](https://www.appsilon.com/rhinoverse/tapyr). See the Tapyr
 [documentation](https://appsilon.github.io/tapyr-docs/) and
@@ -77,6 +81,7 @@ These are familiar IDE-style defaults. Change or disable any of them with
     "stevearc/overseer.nvim",
   },
   opts = {
+    template_path_new_app = "https://github.com/Appsilon/tapyr-template.git",
     mappings = {
       run = "<C-b>",
       restart = "<C-S-b>",
@@ -94,8 +99,9 @@ Set an individual mapping to `false` to disable it.
 Inside the panel:
 
 - `Tab` and `Shift+Tab` cycle views
+- `n` creates an app from the configured template
 - `r` refreshes the app list
-- `R` restarts the selected app
+- `R` starts or restarts the selected app
 - `x` stops the selected app
 - `o` opens the selected app
 - `Enter` opens files from the Project view
@@ -106,14 +112,60 @@ Run `:checkhealth tapyr` to verify external dependencies.
 Tapyr selects the running task in Overseer without overriding its configured
 task-list layout or output strategy.
 
+## Tracked apps
+
+Tapyr reads an optional global registry from
+`stdpath("config")/tapyr.json` and an optional `.tapyr.json` found above the
+current app. Both files use the same format:
+
+```json
+{
+  "version": 1,
+  "apps": [
+    {
+      "name": "Admin",
+      "path": "apps/admin"
+    },
+    {
+      "name": "Reporting",
+      "path": "~/projects/reporting",
+      "port": 8012
+    }
+  ]
+}
+```
+
+Relative paths are resolved from the registry file. Each path must identify a
+directory containing a Shiny `app.py`. An app may reserve a fixed `port`.
+Workspace entries appear first and replace matching global entries. The current
+app and untracked Shiny processes remain visible without a registry.
+
+## New apps
+
+Press `n` in the panel and enter a destination to create an app from the
+configured template. The default is Appsilon's
+[Tapyr template](https://github.com/Appsilon/tapyr-template). Set
+`template_path_new_app` to another GitHub repository, `owner/repository`, or a
+local directory to use a different template.
+
+Tapyr uses a shallow clone for GitHub repositories or copies a local template.
+It refuses an existing destination and does not install packages or prepare a
+Python environment.
+
 ## Project conventions
 
-Tapyr runs `shiny run --reload app.py` and `pytest` from the project's
-`.venv/bin` directory or Neovim's `PATH`. Project detection expects an `app.py`
-that imports `shiny`.
+Tapyr runs `shiny run --reload --port <port> app.py` and `pytest`. It searches
+the app and its parent directories for `.venv/bin`, then uses Neovim's `PATH`.
+Project detection expects an `app.py` that imports `shiny`.
+
+Configured ports are used as written. Otherwise, Tapyr assigns the first free
+port from 8000 through 8199 and keeps that assignment for the Neovim session.
+It reports collisions instead of stopping an unrelated process.
 
 The Apps view lists the public port for each local Shiny command and hides the
 internal redirect listener when the public port is known.
+
+Tapyr uses the prepared Python environment without changing its dependencies.
 
 ## Development
 

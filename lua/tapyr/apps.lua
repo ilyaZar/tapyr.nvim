@@ -2,17 +2,26 @@ local apps = {}
 
 local tasks = require("tapyr.tasks")
 local messages = require("tapyr.messages")
+local project = require("tapyr.project")
 
----@class TapyrApp
----@field host string
+---@class TapyrRunningApp
 ---@field port integer
 ---@field pid? integer
 ---@field argv? string[]
 ---@field launch? string
 ---@field cwd? string
----@field project? string
+---@field id? string
+---@field entrypoint? string
+---@field name? string
 ---@field start_time string
 ---@field url string
+
+---@class TapyrAppRow
+---@field state "running"|"stopped"|"external"
+---@field name string
+---@field root string
+---@field definition? TapyrAppDefinition
+---@field session? TapyrRunningApp
 
 ---@class TapyrProcess
 ---@field pid integer
@@ -97,21 +106,6 @@ local function read_parent_pid(pid)
   handle:close()
 end
 
-local function find_project_root(path)
-  if not path or path == "" then
-    return nil
-  end
-
-  local pyproject = vim.fs.find("pyproject.toml", {
-    upward = true,
-    path = path,
-    type = "file",
-  })[1]
-  if pyproject then
-    return vim.fs.dirname(pyproject)
-  end
-end
-
 local function parse_address(address)
   local host, port = address:match("^%[(.*)%]:(%d+)$")
   if not host then
@@ -184,6 +178,28 @@ function apps.launch_label(argv)
     command[#command + 1] = argument
   end
   return table.concat(command, " ")
+end
+
+---@param argv? string[]
+---@param cwd? string
+---@return string?
+function apps.entrypoint(argv, cwd)
+  local run_index = shiny_run_index(argv)
+  if not run_index or not cwd then
+    return nil
+  end
+
+  for index = #argv, run_index + 1, -1 do
+    local path = argv[index]:match("^([^:]+%.py):?[%w_]*$")
+    if path then
+      if not vim.startswith(path, "/") then
+        path = vim.fs.joinpath(cwd, path)
+      end
+      return project.canonical(path)
+    end
+  end
+
+  return project.canonical(vim.fs.joinpath(cwd, "app.py"))
 end
 
 ---@param pid integer
@@ -286,7 +302,7 @@ local function find_shiny_owner(line)
   end
 end
 
----@return TapyrApp[], string?
+---@return TapyrRunningApp[], string?
 function apps.find()
   if vim.fn.executable("ss") ~= 1 then
     return {}, "Install ss to list local apps"
@@ -311,17 +327,18 @@ function apps.find()
     if host and port and is_local_host(host) then
       local process = find_shiny_owner(line)
       if process and process.start_time then
-        local project = find_project_root(process.cwd) or process.cwd
+        local entrypoint = apps.entrypoint(process.argv, process.cwd)
 
-        ---@type TapyrApp
+        ---@type TapyrRunningApp
         local app = {
-          host = host,
           port = port,
           pid = process.pid,
           argv = process.argv,
           launch = apps.launch_label(process.argv),
           cwd = process.cwd,
-          project = project,
+          id = entrypoint,
+          entrypoint = entrypoint,
+          name = entrypoint and vim.fs.basename(vim.fs.dirname(entrypoint)) or nil,
           start_time = process.start_time,
           url = browser_url(host, port),
         }
@@ -350,7 +367,47 @@ function apps.find()
   return found_apps, nil
 end
 
----@param app? TapyrApp
+---@param definitions TapyrAppDefinition[]
+---@param running TapyrRunningApp[]
+---@return TapyrAppRow[]
+function apps.merge(definitions, running)
+  local rows = {}
+  local matched = {}
+
+  for _, definition in ipairs(definitions) do
+    local session
+    for index, candidate in ipairs(running) do
+      if not matched[index] and candidate.id == definition.id then
+        session = candidate
+        matched[index] = true
+        break
+      end
+    end
+
+    rows[#rows + 1] = {
+      state = session and "running" or "stopped",
+      name = definition.name,
+      root = definition.root,
+      definition = definition,
+      session = session,
+    }
+  end
+
+  for index, session in ipairs(running) do
+    if not matched[index] then
+      rows[#rows + 1] = {
+        state = "external",
+        name = session.name or vim.fs.basename(session.cwd or "app"),
+        root = session.entrypoint and vim.fs.dirname(session.entrypoint) or session.cwd or "",
+        session = session,
+      }
+    end
+  end
+
+  return rows
+end
+
+---@param app? TapyrRunningApp
 ---@return boolean
 function apps.stop(app)
   if not app or not app.pid then
@@ -379,28 +436,32 @@ function apps.stop(app)
   return true
 end
 
----@param app? TapyrApp
----@param root string
+---@param row? TapyrAppRow
 ---@return boolean
-function apps.restart(app, root)
-  if not app then
+function apps.restart(row)
+  if not row then
     messages.show("Select an app first", vim.log.levels.WARN)
     return false
   end
 
-  local project = app.project or app.cwd
-  local is_current_project = project and (project == root or vim.startswith(project, root .. "/"))
-
-  if is_current_project then
-    if not apps.stop(app) then
+  if row.definition then
+    if row.session and not apps.stop(row.session) then
       return false
     end
-    vim.defer_fn(function()
-      tasks.restart(root, false)
-    end, 250)
-    return true
+    if row.session then
+      vim.defer_fn(function()
+        tasks.restart(row.definition, false)
+      end, 250)
+      return true
+    end
+    return tasks.restart(row.definition, false)
   end
 
+  local app = row.session
+  if not app then
+    messages.show("This app is not running", vim.log.levels.WARN)
+    return false
+  end
   if not app.argv or vim.tbl_isempty(app.argv) then
     messages.show("Cannot determine how this app was started", vim.log.levels.WARN)
     return false
@@ -411,7 +472,7 @@ function apps.restart(app, root)
   end
   vim.defer_fn(function()
     local job = vim.fn.jobstart(app.argv, {
-      cwd = app.cwd or app.project,
+      cwd = app.cwd,
       detach = true,
     })
     if job <= 0 then

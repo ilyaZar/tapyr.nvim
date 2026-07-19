@@ -7,15 +7,17 @@ CONTENTS                                                      *tapyr-contents*
 2. Requirements                                             |tapyr-requirements|
 3. Usage                                                     |tapyr-usage|
 4. Configuration                                             |tapyr-configuration|
-5. Health                                                    |tapyr-health|
+5. Registries                                                |tapyr-registries|
+6. Health                                                    |tapyr-health|
 
 ==============================================================================
 1. Introduction                                            *tapyr-introduction*
 
 Tapyr adds focused Shiny for Python tools to Neovim. It detects projects from
 an app.py file that imports shiny, starts apps with live reload, runs tests
-through overseer.nvim, and lists running Shiny apps with controls to open,
-restart, or stop them.
+through overseer.nvim, and lists tracked and locally running Shiny apps with
+controls to open, restart, or stop them. Apps started through Tapyr receive
+independent Overseer tasks and ports.
 
 Tapyr initializes automatically when installed. No configuration call is
 required for its defaults.
@@ -45,8 +47,9 @@ CTRL-T                  Run the test suite.
 Panel mappings:
 
 Tab / Shift-Tab         Cycle views.
+n                       Create an application from the configured template.
 r                       Refresh the application list.
-R                       Restart the selected application.
+R                       Start or restart the selected application.
 x                       Stop the selected application.
 o                       Open the selected application URL.
 Enter                   Open a selected file in the Project view.
@@ -58,6 +61,8 @@ q / Esc                 Close the panel.
 The default buffer-local mappings can be changed or disabled:
 >
   require("tapyr").setup({
+    template_path_new_app =
+      "https://github.com/Appsilon/tapyr-template.git",
     mappings = {
       run = "<C-b>",
       restart = "<C-S-b>",
@@ -68,8 +73,41 @@ The default buffer-local mappings can be changed or disabled:
 <
 Set an individual mapping to false to disable it.
 
+template_path_new_app accepts a GitHub URL, owner/repository, or local
+directory. Press n in the panel and enter a new destination. Tapyr performs a
+shallow clone or local copy and does not install the template's dependencies.
+
 ==============================================================================
-5. Health                                                       *tapyr-health*
+5. Registries                                                *tapyr-registries*
+
+Tapyr reads tracked applications from stdpath("config")/tapyr.json and from a
+.tapyr.json found above the current app. Both use this format:
+>
+  {
+    "version": 1,
+    "apps": [
+      {
+        "name": "Admin",
+        "path": "apps/admin"
+      },
+      {
+        "name": "Reporting",
+        "path": "~/projects/reporting",
+        "port": 8012
+      }
+    ]
+  }
+<
+Paths may be absolute or relative to the registry. Each path must contain a
+Shiny app.py. Workspace entries appear first and replace matching global
+entries.
+
+Tapyr allocates an available port from 8000 through 8199 unless an app has a
+configured port. Each application started through Tapyr uses its own Overseer
+task.
+
+==============================================================================
+6. Health                                                       *tapyr-health*
 
 Run:
 >
