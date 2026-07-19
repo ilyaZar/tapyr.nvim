@@ -2,6 +2,8 @@ local messages = require("tapyr.messages")
 local tasks = require("tapyr.tasks")
 
 local original_constants = package.loaded["overseer.constants"]
+local original_executable = vim.fn.executable
+local original_exepath = vim.fn.exepath
 local original_overseer = package.loaded.overseer
 local original_preload = package.preload.overseer
 local original_show = messages.show
@@ -54,9 +56,35 @@ package.loaded.overseer = {
 }
 package.loaded["overseer.constants"] = { STATUS = status }
 
+local project_executables = {}
+vim.fn.executable = function(command)
+  return project_executables[command] and 1 or 0
+end
+vim.fn.exepath = function(command)
+  return "/usr/bin/" .. command
+end
+
+assert(vim.deep_equal(tasks.resolve("run", "/tmp/project"), {
+  "/usr/bin/shiny",
+  "run",
+  "--reload",
+  "app.py",
+}), "run command did not use Shiny reload")
+
+local project_shiny = "/tmp/project/.venv/bin/shiny"
+project_executables[project_shiny] = true
+assert(tasks.resolve("run", "/tmp/project")[1] == project_shiny, "project Shiny was not preferred")
+project_executables[project_shiny] = nil
+
 tasks.start("/tmp/start")
 assert(created[#created].starts == 1, "start task was not started")
 assert(created[#created].spec.cwd == "/tmp/start", "start task used the wrong root")
+assert(created[#created].spec.cmd[1] == "/usr/bin/shiny", "start task used the wrong executable")
+assert(created[#created].spec.cmd[3] == "--reload", "start task did not enable reload")
+assert(
+  created[#created].spec.env.PYTHONDONTWRITEBYTECODE == "1",
+  "start task allowed bytecode writes"
+)
 
 tasks.run("/tmp/run")
 local run_task = created[#created]
@@ -81,11 +109,25 @@ tasks.test("/tmp/test")
 local test_task = created[#created]
 assert(test_task.starts == 1, "test task was not started")
 assert(test_task.spec.cwd == "/tmp/test", "test task used the wrong root")
-assert(test_task.spec.cmd[3] == "pytest", "test task used the wrong command")
+assert(test_task.spec.cmd[1] == "/usr/bin/pytest", "test task used the wrong command")
+assert(test_task.spec.env.PYTHONDONTWRITEBYTECODE == "1", "test task allowed bytecode writes")
 
 local messages_seen = {}
 messages.show = function(message)
   messages_seen[#messages_seen + 1] = message
+end
+
+vim.fn.exepath = function()
+  return ""
+end
+tasks.run("/tmp/missing-shiny")
+assert(
+  messages_seen[#messages_seen]:find("shiny is not available", 1, true),
+  "missing Shiny error was not shown"
+)
+
+vim.fn.exepath = function(command)
+  return "/usr/bin/" .. command
 end
 package.loaded.overseer = nil
 package.preload.overseer = function()
@@ -99,6 +141,8 @@ assert(
 )
 
 messages.show = original_show
+vim.fn.executable = original_executable
+vim.fn.exepath = original_exepath
 package.loaded.overseer = original_overseer
 package.loaded["overseer.constants"] = original_constants
 package.preload.overseer = original_preload

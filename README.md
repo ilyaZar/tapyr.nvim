@@ -4,7 +4,7 @@
   <a href="https://github.com/ilyaZar/tapyr.nvim/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/ilyaZar/tapyr.nvim/ci.yml?branch=main&style=flat-square&logo=github&logoColor=white&label=CI&labelColor=2a7e3b&color=1b5e2a"></a>
   <a href="https://codecov.io/gh/ilyaZar/tapyr.nvim"><img src="https://img.shields.io/codecov/c/github/ilyaZar/tapyr.nvim/main?style=flat-square&logo=codecov&logoColor=white&labelColor=6b3fa0&color=4b2d73"></a>
   <a href="https://github.com/ilyaZar/tapyr.nvim/releases"><img src="https://img.shields.io/github/v/release/ilyaZar/tapyr.nvim?style=flat-square&label=version&logo=data:image/svg%2bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik0xIDcuNzc1VjIuNzVDMSAxLjc4NCAxLjc4NCAxIDIuNzUgMWg1LjAyNWMuNDY0IDAgLjkxLjE4NCAxLjIzOC41MTNsNi4yNSA2LjI1YTEuNzUgMS43NSAwIDAgMSAwIDIuNDc0bC01LjAyNiA1LjAyNmExLjc1IDEuNzUgMCAwIDEtMi40NzQgMGwtNi4yNS02LjI1QTEuNzUyIDEuNzUyIDAgMCAxIDEgNy43NzVabTEuNSAwYzAgLjA2Ni4wMjYuMTMuMDczLjE3N2w2LjI1IDYuMjVhLjI1LjI1IDAgMCAwIC4zNTQgMGw1LjAyNS01LjAyNWEuMjUuMjUgMCAwIDAgMC0uMzU0bC02LjI1LTYuMjVhLjI1LjI1IDAgMCAwLS4xNzctLjA3M0gyLjc1YS4yNS4yNSAwIDAgMC0uMjUuMjVaTTYgNWExIDEgMCAxIDEgMCAyIDEgMSAwIDAgMSAwLTJaIi8+PC9zdmc+&labelColor=4a999d&color=346c6e"></a>
-  <a href="https://neovim.io"><img src="https://img.shields.io/badge/Neovim-0.10+-3f7f52?style=flat-square&logo=neovim&logoColor=white&labelColor=57a143"></a>
+  <a href="https://neovim.io"><img src="https://img.shields.io/badge/Neovim-0.10+-3C92D2?style=flat-square&logo=neovim&logoColor=white&labelColor=57A143"></a>
   <a href="https://www.lua.org"><img src="https://img.shields.io/badge/Lua-LuaJIT-343476?style=flat-square&logo=lua&logoColor=white&labelColor=4c4c9d"></a>
   <a href="https://github.com/ilyaZar/tapyr.nvim/blob/main/LICENSE"><img src="https://img.shields.io/github/license/ilyaZar/tapyr.nvim?style=flat-square&logo=data:image/svg%2bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PHBhdGggZmlsbD0id2hpdGUiIGQ9Ik04Ljc1Ljc1VjJoLjk4NWMuMzA0IDAgLjYwMy4wOC44NjcuMjMxbDEuMjkuNzM2Yy4wMzguMDIyLjA4LjAzMy4xMjQuMDMzaDIuMjM0YS43NS43NSAwIDAgMSAwIDEuNWgtLjQyN2wyLjExMSA0LjY5MmEuNzUuNzUgMCAwIDEtLjE1NC44MzhsLS41My0uNTMuNTI5LjUzMS0uMDAxLjAwMi0uMDAyLjAwMi0uMDA2LjAwNi0uMDA2LjAwNS0uMDEuMDEtLjA0NS4wNGMtLjIxLjE3Ni0uNDQxLjMyNy0uNjg2LjQ1QzE0LjU1NiAxMC43OCAxMy44OCAxMSAxMyAxMWE0LjQ5OCA0LjQ5OCAwIDAgMS0yLjAyMy0uNDU0IDMuNTQ0IDMuNTQ0IDAgMCAxLS42ODYtLjQ1bC0uMDQ1LS4wNC0uMDE2LS4wMTUtLjAwNi0uMDA2LS4wMDQtLjAwNHYtLjAwMWEuNzUuNzUgMCAwIDEtLjE1NC0uODM4TDEyLjE3OCA0LjVoLS4xNjJjLS4zMDUgMC0uNjA0LS4wNzktLjg2OC0uMjMxbC0xLjI5LS43MzZhLjI0NS4yNDUgMCAwIDAtLjEyNC0uMDMzSDguNzVWMTNoMi41YS43NS43NSAwIDAgMSAwIDEuNWgtNi41YS43NS43NSAwIDAgMSAwLTEuNWgyLjVWMy41aC0uOTg0YS4yNDUuMjQ1IDAgMCAwLS4xMjQuMDMzbC0xLjI4OS43MzdjLS4yNjUuMTUtLjU2NC4yMy0uODY5LjIzaC0uMTYybDIuMTEyIDQuNjkyYS43NS43NSAwIDAgMS0uMTU0LjgzOGwtLjUzLS41My41MjkuNTMxLS4wMDEuMDAyLS4wMDIuMDAyLS4wMDYuMDA2LS4wMTYuMDE1LS4wNDUuMDRjLS4yMS4xNzYtLjQ0MS4zMjctLjY4Ni40NUM0LjU1NiAxMC43OCAzLjg4IDExIDMgMTFhNC40OTggNC40OTggMCAwIDEtMi4wMjMtLjQ1NCAzLjU0NCAzLjU0NCAwIDAgMS0uNjg2LS40NWwtLjA0NS0uMDQtLjAxNi0uMDE1LS4wMDYtLjAwNi0uMDA0LS4wMDR2LS4wMDFhLjc1Ljc1IDAgMCAxLS4xNTQtLjgzOEwyLjE3OCA0LjVIMS43NWEuNzUuNzUgMCAwIDEgMC0xLjVoMi4yMzRhLjI0OS4yNDkgMCAwIDAgLjEyNS0uMDMzbDEuMjg4LS43MzdjLjI2NS0uMTUuNTY0LS4yMy44NjktLjIzaC45ODRWLjc1YS43NS43NSAwIDAgMSAxLjUgMFptMi45NDUgOC40NzdjLjI4NS4xMzUuNzE4LjI3MyAxLjMwNS4yNzNzMS4wMi0uMTM4IDEuMzA1LS4yNzNMMTMgNi4zMjdabS0xMCAwYy4yODUuMTM1LjcxOC4yNzMgMS4zMDUuMjczczEuMDItLjEzOCAxLjMwNS0uMjczTDMgNi4zMjdaIi8+PC9zdmc+&labelColor=629944&color=446a30"></a>
 </p>
@@ -13,10 +13,10 @@
 Minimal Neovim workflow for Shiny for Python apps.
 </p>
 
-`tapyr.nvim` keeps the usual
-[Shiny for Python](https://shiny.posit.co/py/) loop inside Neovim. It finds
-projects from an `app.py` import, runs apps and tests through Overseer, and
-shows local apps in a small floating panel.
+The `tapyr.nvim` plugin provides several QoL enhancements that help
+[Shiny for Python](https://shiny.posit.co/py/) development inside Neovim. It
+finds projects from an `app.py` import, runs apps and tests through Overseer,
+and shows local apps in a small floating panel.
 
 It works with regular Shiny projects, including Appsilon's
 [Tapyr template](https://www.appsilon.com/rhinoverse/tapyr). See the Tapyr
@@ -28,7 +28,8 @@ It works with regular Shiny projects, including Appsilon's
 - Neovim 0.10 or newer
 - Linux with `/proc` and `ss`
 - [`overseer.nvim`](https://github.com/stevearc/overseer.nvim)
-- `uv` and Shiny for Python in each app project
+- A prepared project environment with `shiny` and `pytest` in `.venv/bin` or
+  Neovim's `PATH`
 
 ## Installation
 
@@ -66,23 +67,47 @@ Open a file below a Shiny `app.py`. Tapyr adds these buffer-local mappings:
 - `Ctrl+t` runs the test suite
 - `<leader>tm` opens the panel
 
+These are familiar IDE-style defaults. Change or disable any of them with
+`opts`:
+
+```lua
+{
+  "ilyaZar/tapyr.nvim",
+  dependencies = {
+    "stevearc/overseer.nvim",
+  },
+  opts = {
+    mappings = {
+      run = "<C-b>",
+      restart = "<C-S-b>",
+      test = "<C-t>",
+      panel = "<leader>tm",
+    },
+  },
+}
+```
+
+Set an individual mapping to `false` to disable it.
+
 `:Tapyr` opens the panel directly.
 
 Inside the panel:
 
 - `Tab` and `Shift+Tab` cycle views
+- `r` refreshes the app list
 - `R` restarts the selected app
-- `K` stops the selected app
-- `S` opens the selected app
+- `x` stops the selected app
+- `o` opens the selected app
 - `Enter` opens files from the Project view
-- `q`, `Esc`, or `C` closes the panel
+- `q` or `Esc` closes the panel
 
 Run `:checkhealth tapyr` to verify external dependencies.
 
-## Limits
+## Project conventions
 
-Tapyr currently uses fixed `uv run shiny run app.py` and `uv run pytest`
-commands. Project detection expects an `app.py` that imports `shiny`.
+Tapyr runs `shiny run --reload app.py` and `pytest` from the project's
+`.venv/bin` directory or Neovim's `PATH`. Project detection expects an `app.py`
+that imports `shiny`.
 
 The Apps view lists the public port for each local Shiny command and hides the
 internal redirect listener when the public port is known.
@@ -95,8 +120,7 @@ Run the headless tests:
 ./scripts/test
 ```
 
-Generate the LCOV report after installing `luacov` and
-`luacov-reporter-lcov`:
+Generate the LCOV report after installing `luacov` and `luacov-reporter-lcov`:
 
 ```bash
 ./scripts/coverage

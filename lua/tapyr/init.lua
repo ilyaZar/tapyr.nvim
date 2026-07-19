@@ -5,12 +5,41 @@ local tapyr = {}
 local uv = vim.uv or vim.loop
 local active_root = nil
 
+---@class TapyrMappings
+---@field run? string|false
+---@field restart? string|false
+---@field test? string|false
+---@field panel? string|false
+
+---@class TapyrOptions
+---@field mappings? TapyrMappings
+
+local defaults = {
+  mappings = {
+    run = "<C-b>",
+    restart = "<C-S-b>",
+    test = "<C-t>",
+    panel = "<leader>tm",
+  },
+}
+
+tapyr.config = vim.deepcopy(defaults)
+
 local function map(bufnr, lhs, callback, desc)
+  if not lhs then
+    return
+  end
+
   vim.keymap.set("n", lhs, callback, {
     buffer = bufnr,
     desc = desc,
     silent = true,
   })
+end
+
+---@param options? TapyrOptions
+function tapyr.setup(options)
+  tapyr.config = vim.tbl_deep_extend("force", vim.deepcopy(defaults), options or {})
 end
 
 ---@param bufnr? integer
@@ -34,19 +63,19 @@ function tapyr.attach(bufnr)
   vim.b[bufnr].tapyr_attached = true
   vim.b[bufnr].tapyr_root = root
 
-  map(bufnr, "<C-b>", function()
+  map(bufnr, tapyr.config.mappings.run, function()
     require("tapyr.tasks").run(root)
   end, "Tapyr: run app")
 
-  map(bufnr, "<C-S-b>", function()
+  map(bufnr, tapyr.config.mappings.restart, function()
     require("tapyr.tasks").restart(root)
   end, "Tapyr: restart app")
 
-  map(bufnr, "<C-t>", function()
+  map(bufnr, tapyr.config.mappings.test, function()
     require("tapyr.tasks").test(root)
   end, "Tapyr: test")
 
-  map(bufnr, "<leader>tm", function()
+  map(bufnr, tapyr.config.mappings.panel, function()
     tapyr.open(root)
   end, "Tapyr: panel")
 end
