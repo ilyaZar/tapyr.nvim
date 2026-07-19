@@ -82,6 +82,8 @@ local function footer()
     { " " },
     { "Tab", "DiagnosticOk" },
     { ":views  " },
+    { "[n]", "DiagnosticOk" },
+    { " new  " },
     { "[r]", "DiagnosticOk" },
     { " refresh  " },
     { "[R]", "DiagnosticOk" },
@@ -238,6 +240,7 @@ local function draw_help(state)
     "",
     "keys",
     "  Tab       change view",
+    "  n         create an app from the configured template",
     "  r         refresh apps",
     "  R         start or restart the selected app",
     "  x/o       stop or open the selected app",
@@ -465,6 +468,11 @@ function panel.open(root, current_app)
   map(state, "<CR>", function()
     open_project_file(state)
   end, "Tapyr: open project file")
+  map(state, "n", function()
+    require("tapyr.create").prompt(state.root, function()
+      close(state)
+    end)
+  end, "Tapyr: create app")
   map(state, "r", function()
     draw(state, true)
   end, "Tapyr: refresh")

@@ -12,8 +12,10 @@ local active_app = nil
 
 ---@class TapyrOptions
 ---@field mappings? TapyrMappings
+---@field template_path_new_app? string
 
 local defaults = {
+  template_path_new_app = "https://github.com/Appsilon/tapyr-template.git",
   mappings = {
     run = "<C-b>",
     restart = "<C-S-b>",

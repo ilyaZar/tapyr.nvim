@@ -116,6 +116,7 @@ assert(
 
 vim.cmd.Tapyr()
 assert(vim.bo.filetype == "tapyr", "panel filetype is missing")
+assert(buffer_mapping(0, "Tapyr: create app").lhs == "n", "panel new app mapping is missing")
 assert(buffer_mapping(0, "Tapyr: refresh").lhs == "r", "panel refresh mapping is missing")
 assert(
   buffer_mapping(0, "Tapyr: restart selected app").lhs == "R",
