@@ -114,7 +114,8 @@ Inside the panel:
 Apps shows only runtime state: `running` or `stopped`. Enter opens the concise
 launch command, full project path, URL, and tracking details without changing
 the app. Settings shows the effective keys for Tapyr's four configurable
-actions.
+actions. Help summarizes the effective panel keys and current app counts.
+Its repository, issue, pull request, and license rows open with `Enter`.
 
 Run `:checkhealth tapyr` to verify external dependencies.
 

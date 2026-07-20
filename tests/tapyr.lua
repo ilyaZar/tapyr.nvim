@@ -20,6 +20,22 @@ local function active_tab(bufnr)
   return line:sub(mark[3] + 1, mark[4].end_col), mark[4].hl_group
 end
 
+local function find_line(lines, pattern)
+  for line_number, line in ipairs(lines) do
+    if line:find(pattern, 1, true) then
+      return line_number, line
+    end
+  end
+end
+
+local function find_exact_line(lines, expected)
+  for line_number, line in ipairs(lines) do
+    if line == expected then
+      return line_number
+    end
+  end
+end
+
 local apps = require("tapyr.apps")
 local messages = require("tapyr.messages")
 local registry = require("tapyr.registry")
@@ -27,6 +43,7 @@ local original_find = apps.find
 local original_open_in_browser = apps.open_in_browser
 local original_show = messages.show
 local original_registry_load = registry.load
+local original_ui_open = vim.ui.open
 
 assert(
   apps.is_public_listener({ "uv", "run", "shiny", "run", "app.py", "--reload" }, 8000),
@@ -216,14 +233,72 @@ assert(vim.api.nvim_win_get_cursor(0)[1] == 5, "closing details lost the selecte
 vim.api.nvim_feedkeys(vim.keycode("<S-Tab>"), "x", false)
 local help_lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
 assert(help_lines[1]:find("[Help]", 1, true), "Help view did not wrap backward from Apps")
-assert(help_lines[4]:find("Tab / Shift-Tab", 1, true), "Help view order changed")
-assert(help_lines[6]:find("Enter", 1, true), "Help view omitted app information")
-assert(help_lines[8]:find("X", 1, true), "Help view omitted guarded stop")
-assert(help_lines[9]:find("default browser", 1, true), "Help view omitted browser behavior")
-assert(help_lines[11]:find("configured template", 1, true), "Help view omitted template behavior")
+local keys_line = assert(find_exact_line(help_lines, "Keys"), "Help view omitted Keys")
+local apps_line = assert(find_exact_line(help_lines, "Apps"), "Help view omitted Apps")
+local about_line = assert(find_exact_line(help_lines, "About"), "Help view omitted About")
+assert(keys_line < apps_line and apps_line < about_line, "Help sections are out of order")
+assert(
+  select(2, find_line(help_lines, "Tab / Shift+Tab")):find("next / previous view", 1, true),
+  "Help view omitted view directions"
+)
+assert(find_line(help_lines, "app info or edit selected Settings mapping"), "Help omitted Enter")
+assert(find_line(help_lines, "stop the selected running app"), "Help omitted guarded stop")
+assert(find_line(help_lines, "default browser"), "Help omitted browser behavior")
+assert(find_line(help_lines, "configured template"), "Help omitted template behavior")
+assert(find_line(help_lines, "running     1"), "Help running count does not match Apps")
+assert(find_line(help_lines, "stopped     0"), "Help stopped count does not match Apps")
+local workspace = vim.fn.fnamemodify(fixture_root, ":~")
+workspace =
+  require("tapyr.text").shorten(workspace, math.max(vim.api.nvim_win_get_width(0) - 14, 10))
+assert(find_line(help_lines, workspace), "Help omitted the active workspace")
+assert(not find_line(help_lines, "tracked:"), "Help retained the tracked count")
 label, highlight = active_tab(0)
 assert(label == "[Help]", "Help tab is not highlighted")
 assert(highlight == "DiagnosticWarn", "Help tab highlight changed")
+
+local repository_line = assert(find_line(help_lines, "Tapyr repository"))
+local issue_line = assert(find_line(help_lines, "File an issue"))
+assert(vim.api.nvim_win_get_cursor(0)[1] == repository_line, "Help did not select its first link")
+vim.api.nvim_win_set_cursor(0, { keys_line, 0 })
+vim.api.nvim_exec_autocmds("CursorMoved", { buffer = panel_buf })
+assert(vim.api.nvim_win_get_cursor(0)[1] == repository_line, "direct movement escaped Help links")
+
+if vim.fn.has("nvim-0.11") == 1 then
+  local link_marks = vim.api.nvim_buf_get_extmarks(0, namespace, { about_line, 0 }, -1, {
+    details = true,
+  })
+  local urls = {}
+  for _, mark in ipairs(link_marks) do
+    if mark[4].url then
+      urls[mark[4].url] = true
+    end
+  end
+  assert(urls["https://github.com/ilyaZar/tapyr.nvim"], "repository URL extmark is missing")
+  assert(urls["https://github.com/ilyaZar/tapyr.nvim/issues"], "issue URL extmark is missing")
+  assert(urls["https://github.com/ilyaZar/tapyr.nvim/pulls"], "pull request URL extmark is missing")
+  assert(
+    urls["https://github.com/ilyaZar/tapyr.nvim/blob/main/LICENSE"],
+    "license URL extmark is missing"
+  )
+end
+
+local opened_help_url
+vim.ui.open = function(url)
+  opened_help_url = url
+end
+vim.api.nvim_feedkeys(vim.keycode("<CR>"), "x", false)
+assert(
+  opened_help_url == "https://github.com/ilyaZar/tapyr.nvim",
+  "Enter did not open the repository"
+)
+assert(vim.api.nvim_get_current_buf() == panel_buf, "opening a Help link closed the panel")
+vim.api.nvim_feedkeys("j", "x", false)
+assert(vim.api.nvim_win_get_cursor(0)[1] == issue_line, "Help did not select the next link")
+vim.api.nvim_feedkeys(vim.keycode("<CR>"), "x", false)
+assert(
+  opened_help_url == "https://github.com/ilyaZar/tapyr.nvim/issues",
+  "Enter did not open the issue page"
+)
 
 vim.api.nvim_feedkeys(vim.keycode("<Tab>"), "x", false)
 assert(active_tab(0) == "[Apps]", "Apps view did not wrap forward from Help")
@@ -318,3 +393,4 @@ apps.find = original_find
 apps.open_in_browser = original_open_in_browser
 messages.show = original_show
 registry.load = original_registry_load
+vim.ui.open = original_ui_open

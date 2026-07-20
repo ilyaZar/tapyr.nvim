@@ -15,6 +15,94 @@ local views = {
   { key = "help", label = "Help" },
 }
 
+local actions = {
+  views = {
+    keys = { "<Tab>", "<S-Tab>" },
+    label = "Tab / Shift+Tab",
+    help = "next / previous view",
+  },
+  move = {
+    keys = { "j", "<Down>", "k", "<Up>", "gg", "G" },
+    label = "j / k / arrows",
+    help = "move selection (gg / G for first / last)",
+  },
+  info = {
+    keys = { "<CR>" },
+    label = "Enter",
+    footer = "app info",
+    help = "app info or edit selected Settings mapping",
+  },
+  restart = {
+    keys = { "R" },
+    label = "R",
+    footer = "(re)start",
+    help = "start a stopped app or restart a running app",
+  },
+  stop = {
+    keys = { "X" },
+    label = "X",
+    footer = "stop",
+    help = "stop the selected running app",
+  },
+  browser = {
+    keys = { "b" },
+    label = "b",
+    footer = "browser",
+    help = "open the selected app in the default browser",
+  },
+  refresh = {
+    keys = { "r" },
+    label = "r",
+    footer = "refresh",
+    help = "refresh known and locally running apps",
+  },
+  new = {
+    keys = { "N" },
+    label = "N",
+    footer = "new app template",
+    help = "create an app from the configured template",
+  },
+  close = {
+    keys = { "q", "<Esc>" },
+    label = "q / Esc",
+    footer_label = "q",
+    footer = "close",
+    help = "close the panel",
+  },
+}
+
+local footer_actions = { "info", "restart", "stop", "browser", "refresh", "new", "close" }
+local help_actions = {
+  "views",
+  "move",
+  "info",
+  "restart",
+  "stop",
+  "browser",
+  "refresh",
+  "new",
+  "close",
+}
+
+local about_links = {
+  {
+    label = "Tapyr repository",
+    url = "https://github.com/ilyaZar/tapyr.nvim",
+  },
+  {
+    label = "File an issue",
+    url = "https://github.com/ilyaZar/tapyr.nvim/issues",
+  },
+  {
+    label = "Pull requests",
+    url = "https://github.com/ilyaZar/tapyr.nvim/pulls",
+  },
+  {
+    label = "MIT License",
+    url = "https://github.com/ilyaZar/tapyr.nvim/blob/main/LICENSE",
+  },
+}
+
 local settings_items = {
   {
     name = "run app",
@@ -74,23 +162,18 @@ local function view_bar(state)
 end
 
 local function footer()
-  return {
-    { " " },
-    { "[Enter]", "DiagnosticOk" },
-    { " app info  " },
-    { "[R]", "DiagnosticOk" },
-    { " (re)start  " },
-    { "[X]", "DiagnosticOk" },
-    { " stop  " },
-    { "[b]", "DiagnosticOk" },
-    { " browser  " },
-    { "[r]", "DiagnosticOk" },
-    { " refresh  " },
-    { "[N]", "DiagnosticOk" },
-    { " new app template  " },
-    { "[q]", "DiagnosticOk" },
-    { " close " },
-  }
+  local chunks = { { " " } }
+  for index, name in ipairs(footer_actions) do
+    local action = actions[name]
+    chunks[#chunks + 1] = {
+      "[" .. (action.footer_label or action.label) .. "]",
+      "DiagnosticOk",
+    }
+    chunks[#chunks + 1] = {
+      " " .. action.footer .. (index == #footer_actions and " " or "  "),
+    }
+  end
+  return chunks
 end
 
 local function title(root)
@@ -220,31 +303,50 @@ end
 local function draw_help(state)
   local definitions, registry_notes = registry.load(state.root, state.current_app)
   local running, process_note = apps.find()
+  local rows = apps.merge(definitions, running)
+  local counts = {
+    running = 0,
+    stopped = 0,
+  }
+  for _, row in ipairs(rows) do
+    counts[row.state] = counts[row.state] + 1
+  end
+
   local lines = {
     view_bar(state),
     "",
-    "keys",
-    "  Tab / Shift-Tab  cycle views forward or backward",
-    "  j / k / arrows   move between selectable rows",
-    "  Enter            show app information or edit a Settings mapping",
-    "  R                start a stopped app or restart a running app",
-    "  X                stop the selected running app",
-    "  b                open the selected app in the default browser",
-    "  r                refresh tracked and locally running apps",
-    "  N                create a new app from the configured template",
-    "  q / Esc          close the panel",
-    "",
-    "apps",
-    "  tracked: " .. #definitions,
-    "  running: " .. #running,
-    "  context: " .. state.root,
+    "Keys",
   }
+
+  for _, name in ipairs(help_actions) do
+    local action = actions[name]
+    lines[#lines + 1] = "  " .. text.column(action.label, 19) .. action.help
+  end
+
+  local workspace = vim.fn.fnamemodify(state.root, ":~")
+  workspace = text.shorten(workspace, math.max(vim.api.nvim_win_get_width(state.win) - 14, 10))
+  lines[#lines + 1] = ""
+  lines[#lines + 1] = "Apps"
+  lines[#lines + 1] = "  " .. text.column("running", 12) .. counts.running
+  lines[#lines + 1] = "  " .. text.column("stopped", 12) .. counts.stopped
+  lines[#lines + 1] = "  " .. text.column("workspace", 12) .. workspace
 
   if process_note then
     lines[#lines + 1] = "  " .. process_note
   end
   for _, note in ipairs(registry_notes) do
     lines[#lines + 1] = "  " .. note
+  end
+
+  lines[#lines + 1] = ""
+  lines[#lines + 1] = "About"
+  for _, link in ipairs(about_links) do
+    local line_number = #lines + 1
+    register_item(state, line_number, {
+      kind = "link",
+      url = link.url,
+    }, "link:" .. link.url)
+    lines[#lines + 1] = "  " .. link.label
   end
 
   return lines
@@ -397,6 +499,27 @@ local function draw(state, keep_selection)
       end_col = #lines[3],
       hl_group = { "DiagnosticOk", "Bold" },
     })
+  else
+    for line_number, line in ipairs(lines) do
+      if line == "Keys" or line == "Apps" or line == "About" then
+        vim.api.nvim_buf_set_extmark(state.buf, highlight_namespace, line_number - 1, 0, {
+          end_col = #line,
+          hl_group = { "DiagnosticOk", "Bold" },
+        })
+      end
+    end
+    for line_number, item in pairs(state.items_by_line) do
+      if item.kind == "link" then
+        local options = {
+          end_col = #lines[line_number],
+          hl_group = "DiagnosticInfo",
+        }
+        if vim.fn.has("nvim-0.11") == 1 then
+          options.url = item.url
+        end
+        vim.api.nvim_buf_set_extmark(state.buf, highlight_namespace, line_number - 1, 2, options)
+      end
+    end
   end
 
   local target_line = selected_key and state.line_by_key[selected_key] or state.selectable_lines[1]
@@ -577,6 +700,8 @@ local function open_selected(state)
     open_app_details(state, item.row)
   elseif item.kind == "setting" then
     open_settings_file(state, item.mapping)
+  elseif item.kind == "link" then
+    vim.ui.open(item.url)
   end
 end
 
@@ -597,7 +722,7 @@ function panel.open(root, current_app)
   local max_width = math.max(editor_w - 4, 1)
   local max_height = math.max(editor_h - 4, 1)
   local desired_width = math.max(78, math.min(116, math.floor(editor_w * 0.84)))
-  local desired_height = math.max(12, math.min(20, math.floor(editor_h * 0.45)))
+  local desired_height = math.max(12, math.min(24, math.floor(editor_h * 0.55)))
   local width = math.min(desired_width, max_width)
   local height = math.min(desired_height, max_height)
   local row = math.max(math.floor((editor_h - height) / 2), 0)
@@ -640,42 +765,42 @@ function panel.open(root, current_app)
     end,
   })
 
-  map(state, "<Tab>", function()
+  map(state, actions.views.keys[1], function()
     move_view(state, 1)
   end, "Tapyr: next view")
-  map(state, "<S-Tab>", function()
+  map(state, actions.views.keys[2], function()
     move_view(state, -1)
   end, "Tapyr: previous view")
-  map(state, "<CR>", function()
+  map(state, actions.info.keys[1], function()
     open_selected(state)
   end, "Tapyr: open selected item")
-  map(state, "N", function()
+  map(state, actions.new.keys[1], function()
     require("tapyr.create").prompt(state.root, function()
       close(state)
     end)
   end, "Tapyr: create app")
-  map(state, "j", function()
+  map(state, actions.move.keys[1], function()
     move_selection(state, 1)
   end, "Tapyr: next item")
-  map(state, "<Down>", function()
+  map(state, actions.move.keys[2], function()
     move_selection(state, 1)
   end, "Tapyr: next item")
-  map(state, "k", function()
+  map(state, actions.move.keys[3], function()
     move_selection(state, -1)
   end, "Tapyr: previous item")
-  map(state, "<Up>", function()
+  map(state, actions.move.keys[4], function()
     move_selection(state, -1)
   end, "Tapyr: previous item")
-  map(state, "gg", function()
+  map(state, actions.move.keys[5], function()
     select_line(state, state.selectable_lines[1])
   end, "Tapyr: first item")
-  map(state, "G", function()
+  map(state, actions.move.keys[6], function()
     select_line(state, state.selectable_lines[#state.selectable_lines])
   end, "Tapyr: last item")
-  map(state, "r", function()
+  map(state, actions.refresh.keys[1], function()
     draw(state, true)
   end, "Tapyr: refresh")
-  map(state, "R", function()
+  map(state, actions.restart.keys[1], function()
     local selected = selected_row(state)
     if not selected then
       return
@@ -691,7 +816,7 @@ function panel.open(root, current_app)
       end, 12)
     end)
   end, "Tapyr: restart selected app")
-  map(state, "X", function()
+  map(state, actions.stop.keys[1], function()
     local selected = selected_row(state)
     local session = selected and selected.session
     if not session then
@@ -706,7 +831,7 @@ function panel.open(root, current_app)
       end, 12)
     end
   end, "Tapyr: stop selected app")
-  map(state, "b", function()
+  map(state, actions.browser.keys[1], function()
     local selected = selected_row(state)
     if selected and selected.session then
       apps.open_in_browser(selected.session.url)
@@ -714,10 +839,10 @@ function panel.open(root, current_app)
       messages.show(selected.name .. " is not running", vim.log.levels.WARN)
     end
   end, "Tapyr: open selected app in browser")
-  map(state, "q", function()
+  map(state, actions.close.keys[1], function()
     close(state)
   end, "Tapyr: close")
-  map(state, "<Esc>", function()
+  map(state, actions.close.keys[2], function()
     close(state)
   end, "Tapyr: close")
 

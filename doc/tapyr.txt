@@ -59,7 +59,8 @@ q / Esc                 Close the panel.
 Apps shows running or stopped runtime state. Enter opens the concise launch
 command, full project path, URL, and tracking details without changing the
 application. Settings shows the effective keys for Tapyr's four configurable
-actions.
+actions. Help summarizes the effective panel keys and current app counts.
+Its repository, issue, pull request, and license rows open with Enter.
 
 Tapyr runs applications and tests through Overseer. Overseer's native bottom
 dock is the recommended layout because it keeps task status and the selected
