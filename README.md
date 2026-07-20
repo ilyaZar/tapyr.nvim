@@ -33,7 +33,7 @@ It works with regular Shiny projects, including Appsilon's
 - Linux with `/proc` and `ss`
 - [`overseer.nvim`](https://github.com/stevearc/overseer.nvim)
 - A prepared project environment with `shiny` and `pytest` in `.venv/bin` or
-  Neovim's `PATH`
+  Neovim's `PATH`, or `uv` for first-run preparation from a `uv.lock`
 
 ## Installation
 
@@ -151,8 +151,13 @@ configured template. The default is Appsilon's
 local directory to use a different template.
 
 Tapyr uses a shallow clone for GitHub repositories or copies a local template.
-It refuses an existing destination and does not install packages or prepare a
-Python environment.
+It refuses an existing destination. Creating or opening an app does not install
+packages or prepare a Python environment.
+
+When an explicit run or restart cannot find `shiny`, Tapyr looks for an
+ancestor `uv.lock`. If `uv` is available, one `uv sync` Overseer task prepares
+the environment before Tapyr retries the requested action. Repeated requests
+share the same preparation task.
 
 ## Project conventions
 
@@ -167,7 +172,8 @@ It reports collisions instead of stopping an unrelated process.
 The Apps view lists the public port for each local Shiny command and hides the
 internal redirect listener when the public port is known.
 
-Tapyr uses the prepared Python environment without changing its dependencies.
+Outside an explicit run or restart, Tapyr uses the prepared Python environment
+without changing its dependencies.
 
 ## Development
 

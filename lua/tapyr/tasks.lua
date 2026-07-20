@@ -4,6 +4,7 @@ local messages = require("tapyr.messages")
 local project = require("tapyr.project")
 local app_tasks = {}
 local assigned_ports = {}
+local preparations = {}
 local reserved_ports = {}
 
 local tools = {
@@ -37,18 +38,14 @@ end
 
 ---@param name "run"|"test"
 ---@param app TapyrAppDefinition
----@param port? integer
----@return string[]?
-function tasks.resolve(name, app, port)
+---@return string?
+local function find_executable(name, app)
   local tool = tools[name]
-  local root = app.root
-  local directory = root
-  local project_executable
+  local directory = app.root
   while directory do
     local candidate = vim.fs.joinpath(directory, ".venv", "bin", tool.executable)
     if vim.fn.executable(candidate) == 1 then
-      project_executable = candidate
-      break
+      return candidate
     end
     local parent = vim.fs.dirname(directory)
     if parent == directory then
@@ -57,18 +54,23 @@ function tasks.resolve(name, app, port)
     directory = parent
   end
 
-  local executable
-
-  if project_executable then
-    executable = project_executable
-  else
-    executable = vim.fn.exepath(tool.executable)
+  local executable = vim.fn.exepath(tool.executable)
+  if executable and executable ~= "" then
+    return executable
   end
+end
 
-  if not executable or executable == "" then
+---@param name "run"|"test"
+---@param app TapyrAppDefinition
+---@param port? integer
+---@return string[]?
+function tasks.resolve(name, app, port)
+  local executable = find_executable(name, app)
+  if not executable then
     return nil
   end
 
+  local root = app.root
   if name == "test" then
     return { executable }
   end
@@ -98,6 +100,102 @@ local function missing_tool(name, app)
     tools[name].executable .. " is not available in " .. app.root .. " or Neovim's PATH",
     vim.log.levels.ERROR
   )
+end
+
+local function find_uv_root(app)
+  local lock = vim.fs.find("uv.lock", {
+    path = app.root,
+    upward = true,
+    type = "file",
+    limit = 1,
+  })[1]
+  return lock and vim.fs.dirname(lock) or nil
+end
+
+local function finish_preparation(root, preparation, status)
+  if preparations[root] ~= preparation then
+    return true
+  end
+
+  preparations[root] = nil
+  local constants = require("overseer.constants")
+  if status == constants.STATUS.CANCELED then
+    messages.show(
+      "Environment preparation canceled for " .. vim.fs.basename(root),
+      vim.log.levels.WARN
+    )
+    return true
+  end
+  if status ~= constants.STATUS.SUCCESS then
+    messages.show(
+      "Environment preparation failed for " .. vim.fs.basename(root),
+      vim.log.levels.ERROR
+    )
+    return true
+  end
+
+  for _, request in pairs(preparation.pending) do
+    if find_executable("run", request.app) then
+      request.retry()
+    else
+      missing_tool("run", request.app)
+    end
+  end
+  return true
+end
+
+local function prepare(app, retry)
+  local root = find_uv_root(app)
+  local uv = vim.fn.exepath("uv")
+  if not root or not uv or uv == "" then
+    missing_tool("run", app)
+    return false
+  end
+
+  local key = app.id or app.root
+  local preparation = preparations[root]
+  if preparation then
+    preparation.pending[key] = { app = app, retry = retry }
+    return true
+  end
+
+  local overseer = get_overseer()
+  if not overseer then
+    return false
+  end
+
+  local task = overseer.new_task({
+    name = "Tapyr: prepare " .. vim.fs.basename(root),
+    cmd = { uv, "sync" },
+    cwd = root,
+    metadata = { tapyr_prepare = root },
+    components = { "default" },
+  })
+  preparation = {
+    pending = {
+      [key] = { app = app, retry = retry },
+    },
+  }
+  preparations[root] = preparation
+
+  task:subscribe("on_complete", function(_, status)
+    return finish_preparation(root, preparation, status)
+  end)
+  messages.show("Preparing environment in " .. root)
+  if task:start() == false then
+    preparations[root] = nil
+    messages.show("Could not start environment preparation", vim.log.levels.ERROR)
+    return false
+  end
+  show_task(task)
+  return true
+end
+
+local function with_shiny(app, retry)
+  if find_executable("run", app) then
+    return retry()
+  end
+  return prepare(app, retry)
 end
 
 local function listening_ports()
@@ -224,9 +322,7 @@ function tasks.describe(name)
   return tool.executable
 end
 
----@param app TapyrAppDefinition
----@return boolean
-function tasks.run(app)
+local function run(app, on_started)
   local task = ensure_app_task(app)
   if not task then
     return false
@@ -241,13 +337,13 @@ function tasks.run(app)
   end
 
   show_task(task)
+  if on_started then
+    on_started()
+  end
   return true
 end
 
----@param app TapyrAppDefinition
----@param show_task_list? boolean
----@return boolean
-function tasks.restart(app, show_task_list)
+local function restart(app, show_task_list, on_started)
   local task, created = ensure_app_task(app)
   if not task then
     return false
@@ -262,7 +358,29 @@ function tasks.restart(app, show_task_list)
   if show_task_list ~= false then
     show_task(task)
   end
+  if on_started then
+    on_started()
+  end
   return true
+end
+
+---@param app TapyrAppDefinition
+---@param on_started? fun()
+---@return boolean
+function tasks.run(app, on_started)
+  return with_shiny(app, function()
+    return run(app, on_started)
+  end)
+end
+
+---@param app TapyrAppDefinition
+---@param show_task_list? boolean
+---@param on_started? fun()
+---@return boolean
+function tasks.restart(app, show_task_list, on_started)
+  return with_shiny(app, function()
+    return restart(app, show_task_list, on_started)
+  end)
 end
 
 ---@param app TapyrAppDefinition

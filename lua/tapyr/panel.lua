@@ -478,8 +478,11 @@ function panel.open(root, current_app)
   end, "Tapyr: refresh")
   map(state, "R", function()
     local selected = selected_row(state)
-    local previous = selected and selected.session
-    if selected and apps.restart(selected) then
+    if not selected then
+      return
+    end
+    local previous = selected.session
+    apps.restart(selected, function()
       refresh_until(state, function(rows)
         if selected.definition then
           local current = row_for_id(rows, selected.definition.id)
@@ -487,7 +490,7 @@ function panel.open(root, current_app)
         end
         return previous and not has_session(rows, previous) and has_replacement(rows, previous)
       end, 12)
-    end
+    end)
   end, "Tapyr: restart selected app")
   map(state, "x", function()
     local selected = selected_row(state)
