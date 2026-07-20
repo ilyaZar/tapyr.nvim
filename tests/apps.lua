@@ -110,11 +110,13 @@ local stop_result = true
 apps.stop = function()
   return stop_result
 end
-tasks.restart = function(root, show_task_list)
+tasks.restart = function(root, show_task_list, on_started)
   started = {
     app = root,
+    on_started = on_started,
     show_task_list = show_task_list,
   }
+  return true
 end
 
 local current_definition = {
@@ -123,13 +125,20 @@ local current_definition = {
   root = "/tmp/current",
   entrypoint = "/tmp/current/app.py",
 }
+local tracked_started = false
 apps.restart({
   definition = current_definition,
   session = { pid = 103 },
-})
+}, function()
+  tracked_started = true
+end)
 assert(started.app == current_definition, "tracked app was not restarted")
 assert(started.show_task_list == false, "panel restart opened the Overseer task list")
+assert(not tracked_started, "tracked restart callback ran before the task started")
+started.on_started()
+assert(tracked_started, "tracked restart callback was not forwarded")
 
+local external_started = false
 apps.restart({
   state = "external",
   name = "other",
@@ -174,8 +183,11 @@ apps.restart({
     argv = { "shiny", "run", "app.py" },
     launch = "shiny run app.py",
   },
-})
+}, function()
+  external_started = true
+end)
 assert(jobs_started == 1, "external app was not restarted")
+assert(external_started, "external restart callback was not called")
 
 vim.fn.jobstart = function()
   return 0

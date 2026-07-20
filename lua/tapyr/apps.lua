@@ -437,8 +437,9 @@ function apps.stop(app)
 end
 
 ---@param row? TapyrAppRow
+---@param on_started? fun()
 ---@return boolean
-function apps.restart(row)
+function apps.restart(row, on_started)
   if not row then
     messages.show("Select an app first", vim.log.levels.WARN)
     return false
@@ -450,11 +451,11 @@ function apps.restart(row)
     end
     if row.session then
       vim.defer_fn(function()
-        tasks.restart(row.definition, false)
+        tasks.restart(row.definition, false, on_started)
       end, 250)
       return true
     end
-    return tasks.restart(row.definition, false)
+    return tasks.restart(row.definition, false, on_started)
   end
 
   local app = row.session
@@ -479,6 +480,9 @@ function apps.restart(row)
       messages.show("Could not restart " .. (app.launch or "app"), vim.log.levels.ERROR)
     else
       messages.show("Restarted " .. (app.launch or "app"))
+      if on_started then
+        on_started()
+      end
     end
   end, 250)
   return true

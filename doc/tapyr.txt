@@ -29,7 +29,7 @@ required for its defaults.
 - Linux with /proc and ss
 - overseer.nvim
 - A prepared project environment with shiny and pytest available in .venv/bin
-  or Neovim's PATH
+  or Neovim's PATH, or uv for first-run preparation from a uv.lock
 
 ==============================================================================
 3. Usage                                                         *tapyr-usage*
@@ -80,7 +80,13 @@ Set an individual mapping to false to disable it.
 
 template_path_new_app accepts a GitHub URL, owner/repository, or local
 directory. Press n in the panel and enter a new destination. Tapyr performs a
-shallow clone or local copy and does not install the template's dependencies.
+shallow clone or local copy. Creating or opening an app does not install the
+template's dependencies.
+
+When an explicit run or restart cannot find shiny, Tapyr looks for an
+ancestor uv.lock. If uv is available, one uv sync Overseer task prepares the
+environment before Tapyr retries the requested action. Repeated requests share
+the same preparation task.
 
 ==============================================================================
 5. Registries                                                *tapyr-registries*

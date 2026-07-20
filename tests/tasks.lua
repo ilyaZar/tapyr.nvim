@@ -10,8 +10,11 @@ local original_show = messages.show
 local original_system = vim.system
 
 local status = {
+  CANCELED = "canceled",
+  FAILURE = "failure",
   PENDING = "pending",
   RUNNING = "running",
+  SUCCESS = "success",
 }
 
 local created = {}
@@ -23,6 +26,7 @@ local function new_task(spec)
     restarts = 0,
     starts = 0,
     status = status.PENDING,
+    subscribers = {},
     spec = spec,
   }
 
@@ -33,11 +37,25 @@ local function new_task(spec)
   function task:restart()
     self.restarts = self.restarts + 1
     self.status = status.RUNNING
+    return true
   end
 
   function task:start()
     self.starts = self.starts + 1
     self.status = status.RUNNING
+    return true
+  end
+
+  function task:subscribe(event, callback)
+    self.subscribers[event] = self.subscribers[event] or {}
+    self.subscribers[event][#self.subscribers[event] + 1] = callback
+  end
+
+  function task:complete(result)
+    self.status = result
+    for _, callback in ipairs(self.subscribers.on_complete or {}) do
+      callback(self, result)
+    end
   end
 
   return task
@@ -56,11 +74,16 @@ package.loaded.overseer = {
 package.loaded["overseer.constants"] = { STATUS = status }
 
 local project_executables = {}
+local system_executables = {
+  pytest = "/usr/bin/pytest",
+  shiny = "/usr/bin/shiny",
+  uv = "/usr/bin/uv",
+}
 vim.fn.executable = function(command)
   return project_executables[command] and 1 or 0
 end
 vim.fn.exepath = function(command)
-  return "/usr/bin/" .. command
+  return system_executables[command] or ""
 end
 
 vim.system = function(command)
@@ -162,6 +185,73 @@ messages.show = function(message)
   messages_seen[#messages_seen + 1] = message
 end
 
+local uv_root = vim.fs.joinpath(vim.fn.getcwd(), "tests", "fixtures", "uv-project")
+local uv_app = app(vim.fs.joinpath(uv_root, "apps", "demo"), "uv app", 49153)
+system_executables.shiny = nil
+
+local created_before_prepare = #created
+local messages_before_prepare = #messages_seen
+assert(tasks.run(uv_app), "missing Shiny did not start environment preparation")
+local prepare_task = created[#created]
+assert(#created == created_before_prepare + 1, "environment preparation created extra tasks")
+assert(prepare_task.spec.name == "Tapyr: prepare uv-project", "preparation task name changed")
+assert(vim.deep_equal(prepare_task.spec.cmd, { "/usr/bin/uv", "sync" }), "uv sync command changed")
+assert(prepare_task.spec.cwd == uv_root, "uv sync used the wrong project root")
+assert(prepare_task.spec.metadata.tapyr_prepare == uv_root, "uv project identity was lost")
+assert(opened[#opened].enter == false, "environment preparation took focus")
+assert(opened[#opened].focus_task_id == prepare_task.id, "preparation task was not selected")
+assert(#messages_seen == messages_before_prepare + 1, "preparation notification was duplicated")
+
+local prepared_started = false
+assert(
+  tasks.restart(uv_app, false, function()
+    prepared_started = true
+  end),
+  "repeated restart rejected active preparation"
+)
+assert(#created == created_before_prepare + 1, "repeated action created another uv sync task")
+assert(#messages_seen == messages_before_prepare + 1, "repeated action repeated the notification")
+
+local uv_shiny = vim.fs.joinpath(uv_root, ".venv", "bin", "shiny")
+project_executables[uv_shiny] = true
+prepare_task:complete(status.SUCCESS)
+local prepared_app_task = created[#created]
+assert(#created == created_before_prepare + 2, "successful preparation did not start the app")
+assert(prepared_app_task.spec.cmd[1] == uv_shiny, "prepared Shiny executable was not used")
+assert(prepared_app_task.starts == 1, "prepared app was not started")
+assert(prepared_app_task.restarts == 0, "repeated actions started the prepared app more than once")
+assert(prepared_started, "prepared app did not complete the restart handoff")
+
+project_executables[uv_shiny] = nil
+local created_before_failure = #created
+assert(tasks.run(uv_app), "second preparation did not start")
+local failed_prepare_task = created[#created]
+failed_prepare_task:complete(status.FAILURE)
+assert(#created == created_before_failure + 1, "failed preparation started an app")
+assert(
+  messages_seen[#messages_seen] == "Environment preparation failed for uv-project",
+  "failed preparation was not reported"
+)
+
+local created_before_cancel = #created
+assert(tasks.run(uv_app), "canceled preparation did not start")
+local canceled_prepare_task = created[#created]
+canceled_prepare_task:complete(status.CANCELED)
+assert(#created == created_before_cancel + 1, "canceled preparation started an app")
+assert(
+  messages_seen[#messages_seen] == "Environment preparation canceled for uv-project",
+  "canceled preparation was not reported"
+)
+
+system_executables.uv = nil
+assert(not tasks.run(uv_app), "missing uv started environment preparation")
+assert(
+  messages_seen[#messages_seen]:find("shiny is not available", 1, true),
+  "missing uv did not retain the Shiny error"
+)
+system_executables.uv = "/usr/bin/uv"
+system_executables.shiny = "/usr/bin/shiny"
+
 vim.system = function()
   return {
     wait = function()
@@ -194,30 +284,22 @@ vim.system = function()
     end,
   }
 end
-vim.fn.exepath = function()
-  return ""
-end
+system_executables.shiny = nil
 tasks.run(app("/tmp/missing-shiny", "missing shiny", 49153))
 assert(
   messages_seen[#messages_seen]:find("shiny is not available", 1, true),
   "missing Shiny error was not shown"
 )
 
-vim.fn.exepath = function(command)
-  if command == "pytest" then
-    return ""
-  end
-  return "/usr/bin/" .. command
-end
+system_executables.shiny = "/usr/bin/shiny"
+system_executables.pytest = nil
 tasks.test(app("/tmp/missing-pytest", "missing pytest"))
 assert(
   messages_seen[#messages_seen]:find("pytest is not available", 1, true),
   "missing pytest error was not shown"
 )
 
-vim.fn.exepath = function(command)
-  return "/usr/bin/" .. command
-end
+system_executables.pytest = "/usr/bin/pytest"
 package.loaded.overseer = nil
 package.preload.overseer = function()
   error("overseer unavailable")
