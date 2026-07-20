@@ -89,19 +89,19 @@ local help_actions = {
 local about_links = {
   {
     label = "Project repository",
-    url = "https://github.com/ilyaZar/tapyr.nvim",
+    url = "https://github.com/ilyaZar/shiny.nvim",
   },
   {
     label = "File an issue",
-    url = "https://github.com/ilyaZar/tapyr.nvim/issues",
+    url = "https://github.com/ilyaZar/shiny.nvim/issues",
   },
   {
     label = "Pull requests",
-    url = "https://github.com/ilyaZar/tapyr.nvim/pulls",
+    url = "https://github.com/ilyaZar/shiny.nvim/pulls",
   },
   {
     label = "MIT License",
-    url = "https://github.com/ilyaZar/tapyr.nvim/blob/main/LICENSE",
+    url = "https://github.com/ilyaZar/shiny.nvim/blob/main/LICENSE",
   },
 }
 

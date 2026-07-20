@@ -355,11 +355,11 @@ if vim.fn.has("nvim-0.11") == 1 then
       urls[mark[4].url] = true
     end
   end
-  assert(urls["https://github.com/ilyaZar/tapyr.nvim"], "repository URL extmark is missing")
-  assert(urls["https://github.com/ilyaZar/tapyr.nvim/issues"], "issue URL extmark is missing")
-  assert(urls["https://github.com/ilyaZar/tapyr.nvim/pulls"], "pull request URL extmark is missing")
+  assert(urls["https://github.com/ilyaZar/shiny.nvim"], "repository URL extmark is missing")
+  assert(urls["https://github.com/ilyaZar/shiny.nvim/issues"], "issue URL extmark is missing")
+  assert(urls["https://github.com/ilyaZar/shiny.nvim/pulls"], "pull request URL extmark is missing")
   assert(
-    urls["https://github.com/ilyaZar/tapyr.nvim/blob/main/LICENSE"],
+    urls["https://github.com/ilyaZar/shiny.nvim/blob/main/LICENSE"],
     "license URL extmark is missing"
   )
 end
@@ -372,7 +372,7 @@ vim.api.nvim_win_set_cursor(0, { repository_line, 0 })
 vim.api.nvim_exec_autocmds("CursorMoved", { buffer = panel_buf })
 vim.api.nvim_feedkeys(vim.keycode("<CR>"), "x", false)
 assert(
-  opened_help_url == "https://github.com/ilyaZar/tapyr.nvim",
+  opened_help_url == "https://github.com/ilyaZar/shiny.nvim",
   "Enter did not open the repository"
 )
 assert(vim.api.nvim_get_current_buf() == panel_buf, "opening a Help link closed the panel")
@@ -380,7 +380,7 @@ vim.api.nvim_feedkeys("j", "x", false)
 assert(vim.api.nvim_win_get_cursor(0)[1] == issue_line, "Help did not select the next link")
 vim.api.nvim_feedkeys(vim.keycode("<CR>"), "x", false)
 assert(
-  opened_help_url == "https://github.com/ilyaZar/tapyr.nvim/issues",
+  opened_help_url == "https://github.com/ilyaZar/shiny.nvim/issues",
   "Enter did not open the issue page"
 )
 
