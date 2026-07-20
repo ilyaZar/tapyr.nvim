@@ -47,13 +47,19 @@ CTRL-T                  Run the test suite.
 Panel mappings:
 
 Tab / Shift-Tab         Cycle views.
-n                       Create an application from the configured template.
-r                       Refresh the application list.
+j / k / Down / Up       Move between selectable rows.
+Enter                   Open app information or a Settings mapping.
 R                       Start or restart the selected application.
-x                       Stop the selected application.
-o                       Open the selected application URL.
-Enter                   Open a selected file in the Project view.
+X                       Stop the selected application.
+b                       Open the application in the default browser.
+r                       Refresh the application list.
+N                       Create an application from the configured template.
 q / Esc                 Close the panel.
+
+Apps shows running or stopped runtime state. Enter opens the concise launch
+command, full project path, URL, and tracking details without changing the
+application. Settings shows the effective keys for Tapyr's four configurable
+actions.
 
 Tapyr runs applications and tests through Overseer. Overseer's native bottom
 dock is the recommended layout because it keeps task status and the selected
@@ -66,6 +72,8 @@ focus from the source buffer and respects explicit Overseer configuration.
 The default buffer-local mappings can be changed or disabled:
 >
   require("tapyr").setup({
+    settings_path =
+      vim.fn.stdpath("config") .. "/lua/plugins/tapyr.lua",
     template_path_new_app =
       "https://github.com/Appsilon/tapyr-template.git",
     mappings = {
@@ -78,8 +86,12 @@ The default buffer-local mappings can be changed or disabled:
 <
 Set an individual mapping to false to disable it.
 
+settings_path may identify the readable Lua file containing these mappings.
+Selecting an action in Settings and pressing Enter opens that file at the
+mapping. Tapyr does not create or overwrite the file.
+
 template_path_new_app accepts a GitHub URL, owner/repository, or local
-directory. Press n in the panel and enter a new destination. Tapyr performs a
+directory. Press N in the panel and enter a new destination. Tapyr performs a
 shallow clone or local copy. Creating or opening an app does not install the
 template's dependencies.
 

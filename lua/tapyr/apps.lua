@@ -17,7 +17,7 @@ local project = require("tapyr.project")
 ---@field url string
 
 ---@class TapyrAppRow
----@field state "running"|"stopped"|"external"
+---@field state "running"|"stopped"
 ---@field name string
 ---@field root string
 ---@field definition? TapyrAppDefinition
@@ -402,7 +402,7 @@ function apps.merge(definitions, running)
   for index, session in ipairs(running) do
     if not matched[index] then
       rows[#rows + 1] = {
-        state = "external",
+        state = "running",
         name = session.name or vim.fs.basename(session.cwd or "app"),
         root = session.entrypoint and vim.fs.dirname(session.entrypoint) or session.cwd or "",
         session = session,

@@ -81,6 +81,7 @@ These are familiar IDE-style defaults. Change or disable any of them with
     "stevearc/overseer.nvim",
   },
   opts = {
+    settings_path = vim.fn.stdpath("config") .. "/lua/plugins/tapyr.lua",
     template_path_new_app = "https://github.com/Appsilon/tapyr-template.git",
     mappings = {
       run = "<C-b>",
@@ -93,19 +94,27 @@ These are familiar IDE-style defaults. Change or disable any of them with
 ```
 
 Set an individual mapping to `false` to disable it.
+Set `settings_path` to the readable Lua file containing these mappings to open
+it from the Settings view. Tapyr never creates or overwrites that file.
 
 `:Tapyr` opens the panel directly.
 
 Inside the panel:
 
 - `Tab` and `Shift+Tab` cycle views
-- `n` creates an app from the configured template
-- `r` refreshes the app list
+- `j`, `k`, Down, and Up move between selectable rows
+- `Enter` opens app information or the selected Settings mapping
 - `R` starts or restarts the selected app
-- `x` stops the selected app
-- `o` opens the selected app
-- `Enter` opens files from the Project view
+- `X` stops the selected app
+- `b` opens the selected app in the default browser
+- `r` refreshes the app list
+- `N` creates an app from the configured template
 - `q` or `Esc` closes the panel
+
+Apps shows only runtime state: `running` or `stopped`. Enter opens the concise
+launch command, full project path, URL, and tracking details without changing
+the app. Settings shows the effective keys for Tapyr's four configurable
+actions.
 
 Run `:checkhealth tapyr` to verify external dependencies.
 
@@ -144,7 +153,7 @@ app and untracked Shiny processes remain visible without a registry.
 
 ## New apps
 
-Press `n` in the panel and enter a destination to create an app from the
+Press `N` in the panel and enter a destination to create an app from the
 configured template. The default is Appsilon's
 [Tapyr template](https://github.com/Appsilon/tapyr-template). Set
 `template_path_new_app` to another GitHub repository, `owner/repository`, or a

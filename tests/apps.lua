@@ -142,7 +142,6 @@ assert(tracked_started, "tracked restart callback was not forwarded")
 
 local external_started = false
 apps.restart({
-  state = "external",
   name = "other",
   root = "/tmp/other",
   session = { pid = 104 },
@@ -159,7 +158,6 @@ vim.fn.jobstart = function()
   return 1
 end
 apps.restart({
-  state = "external",
   name = "other",
   root = "/tmp/other",
   session = {
@@ -176,7 +174,6 @@ vim.fn.jobstart = function()
   return 1
 end
 apps.restart({
-  state = "external",
   name = "other",
   root = "/tmp/other",
   session = {
@@ -195,7 +192,6 @@ vim.fn.jobstart = function()
   return 0
 end
 apps.restart({
-  state = "external",
   name = "other",
   root = "/tmp/other",
   session = {
@@ -236,7 +232,7 @@ assert(#rows == 3, "tracked and external apps were not merged")
 assert(rows[1].state == "running", "running tracked app state changed")
 assert(rows[1].session == running[1], "running tracked session was lost")
 assert(rows[2].state == "stopped", "stopped tracked app state changed")
-assert(rows[3].state == "external", "untracked app was not marked external")
+assert(rows[3].state == "running", "untracked live app was not marked running")
 
 local opened_url
 vim.ui.open = function(url)
