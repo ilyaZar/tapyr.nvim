@@ -17,20 +17,21 @@ end
 ---@return boolean
 function rgolem.create_or_confirm(input)
   local entries = require("shiny.rgolem.entries")
+  local name = require("shiny.rgolem.name")
   local shelves = require("shiny.rgolem.shelves")
-  local name, error_message = entries.resolve(input)
-  if not name then
+  local package_name, error_message = name.resolve(input)
+  if not package_name then
     require("shiny.messages").show(error_message, vim.log.levels.WARN)
     return false
   end
 
   local shelf = shelves.active()
-  if not entries.exists(shelf, name) then
-    return require("shiny.rgolem.create").at(shelf, name)
+  if not entries.exists(shelf, package_name) then
+    return require("shiny.rgolem.create").at(shelf, package_name)
   end
 
   local path
-  path, error_message = entries.path(shelf, name)
+  path, error_message = entries.path(shelf, package_name)
   if not path then
     require("shiny.messages").show(error_message, vim.log.levels.ERROR)
     return false
@@ -40,7 +41,7 @@ function rgolem.create_or_confirm(input)
     "Delete " .. path .. " recursively and recreate it?",
     function(confirmed)
       if confirmed then
-        require("shiny.rgolem.create").at(shelf, name, true)
+        require("shiny.rgolem.create").at(shelf, package_name, true)
       end
     end
   )

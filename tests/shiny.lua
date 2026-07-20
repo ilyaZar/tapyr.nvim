@@ -186,8 +186,8 @@ assert(
   "panel new app mapping is missing"
 )
 assert(
-  buffer_mapping(0, "Shiny: create next Golex app").lhs == "n",
-  "Golex next-number mapping is missing"
+  buffer_mapping(0, "Shiny: create next Golex app") == nil,
+  "removed Golex next-number mapping remained active"
 )
 assert(buffer_mapping(0, "Shiny: refresh").lhs == "r", "panel refresh mapping is missing")
 assert(
@@ -314,8 +314,8 @@ assert(
 assert(find_line(help_lines, "use the selected item"), "Help omitted Enter")
 assert(find_line(help_lines, "stop the selected running app"), "Help omitted guarded stop")
 assert(find_line(help_lines, "default browser"), "Help omitted browser behavior")
-assert(find_line(help_lines, "configured template"), "Help omitted template behavior")
-assert(find_line(help_lines, "create the next numbered Golex app"), "Help omitted Golex next")
+assert(find_line(help_lines, "configured app template"), "Help omitted template behavior")
+assert(find_line(help_lines, "edit the next numbered Golex app name"), "Help omitted Golex new")
 assert(find_line(help_lines, "delete the selected app or shelf"), "Help omitted Golex delete")
 assert(find_line(help_lines, "running     1"), "Help running count does not match Apps")
 assert(find_line(help_lines, "stopped     0"), "Help stopped count does not match Apps")
@@ -402,19 +402,31 @@ assert(vim.api.nvim_win_get_cursor(0)[1] == 4, "Golex input row was not selected
 footer_text = helpers.rendered_footer()
 assert(footer_text:find("[Enter] create/open", 1, true), "Golex Enter action is missing")
 assert(footer_text:find("[N] new Golex app", 1, true), "Golex new-app action is missing")
+assert(not footer_text:find("[n]", 1, true), "removed Golex next action remained in the footer")
 assert(not footer_text:find("[R] (re)start", 1, true), "Apps actions leaked into Golex")
 
 vim.api.nvim_feedkeys(vim.keycode("<Tab>"), "x", false)
 local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
 assert(lines[1]:find("[Settings]", 1, true), "Settings view is missing")
-assert(lines[5]:find("Ctrl+b", 1, true), "Settings did not show the default run mapping")
-assert(lines[6]:find("Ctrl+Shift+b", 1, true), "Settings did not show the default restart mapping")
+assert(lines[3] == "Mappings", "Settings omitted the mappings section")
+assert(lines[6]:find("Ctrl+b", 1, true), "Settings did not show the default run mapping")
+assert(lines[7]:find("Ctrl+Shift+b", 1, true), "Settings did not show the default restart mapping")
 label, highlight = active_tab(0)
 assert(label == "[Settings]", "Settings tab is not highlighted")
 assert(highlight == "DiagnosticWarn", "Settings tab highlight changed")
-assert(#lines == 10, "Settings does not contain all six supported mappings")
-assert(lines[9]:find("document Golem", 1, true), "Settings omitted document and reload")
-assert(lines[10]:find("run Golem dev", 1, true), "Settings omitted the Golem dev script")
+assert(lines[10]:find("document Golem", 1, true), "Settings omitted document and reload")
+assert(lines[11]:find("run Golem dev", 1, true), "Settings omitted the Golem dev script")
+assert(lines[13] == "Creation templates", "Settings omitted the creation-template section")
+assert(
+  lines[16]:find("Tapyr", 1, true) and lines[16]:find("repository", 1, true),
+  "Settings omitted the Tapyr repository template"
+)
+assert(
+  lines[17]:find("golem", 1, true) and lines[17]:find("golem::create_golem()", 1, true),
+  "Settings omitted the golem creation hook"
+)
+footer_text = helpers.rendered_footer()
+assert(footer_text:find("[Enter] edit setting", 1, true), "Settings footer described only mappings")
 assert(
   not table.concat(lines, "\n"):find("pyproject.toml", 1, true),
   "Settings retained pyproject.toml"
@@ -427,6 +439,18 @@ assert(
   "Settings did not move to the run mapping"
 )
 
+require("shiny").open(fixture_app)
+vim.api.nvim_feedkeys(vim.keycode("<Tab>"), "x", false)
+vim.api.nvim_feedkeys(vim.keycode("<Tab>"), "x", false)
+vim.api.nvim_feedkeys("G", "x", false)
+vim.api.nvim_feedkeys(vim.keycode("<CR>"), "x", false)
+assert(
+  vim.api.nvim_get_current_line():find("creation_templates =", 1, true),
+  "Settings did not move to the creation_templates setting"
+)
+
+local original_columns = vim.o.columns
+local original_lines = vim.o.lines
 vim.o.columns = 67
 vim.o.lines = 24
 vim.cmd.Shiny()
@@ -462,6 +486,8 @@ for _, line in ipairs(wrapped_footer) do
   )
 end
 vim.api.nvim_feedkeys("q", "x", false)
+vim.o.columns = original_columns
+vim.o.lines = original_lines
 
 require("shiny").setup({
   settings_path = settings_fixture,
@@ -488,11 +514,11 @@ vim.api.nvim_feedkeys(vim.keycode("<Tab>"), "x", false)
 vim.api.nvim_feedkeys(vim.keycode("<Tab>"), "x", false)
 local custom_settings_lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
 assert(
-  custom_settings_lines[5]:find("<leader>tb", 1, true),
+  custom_settings_lines[6]:find("<leader>tb", 1, true),
   "Settings did not show the custom run mapping"
 )
 assert(
-  custom_settings_lines[7]:find("-", 1, true),
+  custom_settings_lines[8]:find("-", 1, true),
   "Settings did not show the disabled test mapping"
 )
 vim.api.nvim_feedkeys("q", "x", false)

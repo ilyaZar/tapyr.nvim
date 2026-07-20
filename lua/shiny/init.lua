@@ -17,15 +17,35 @@ local active_app = nil
 ---@field shelves_path? string
 ---@field open_cmd? string[]
 
+---@class ShinyCreationTemplate
+---@field name string
+---@field source? string
+---@field command? string[]
+---@field create? fun(destination: string): boolean
+---@field available? fun(): boolean
+---@field description? string
+
 ---@class ShinyOptions
 ---@field mappings? ShinyMappings
 ---@field settings_path? string
----@field template_path_new_app? string
+---@field creation_templates? ShinyCreationTemplate[]
 ---@field golex? ShinyGolexOptions
 
+local golem_create = require("shiny.rgolem.create")
 local defaults = {
   settings_path = nil,
-  template_path_new_app = "https://github.com/Appsilon/tapyr-template.git",
+  creation_templates = {
+    {
+      name = "Tapyr",
+      source = "https://github.com/Appsilon/tapyr-template.git",
+    },
+    {
+      name = "golem",
+      create = golem_create.path,
+      available = golem_create.available,
+      description = "golem::create_golem()",
+    },
+  },
   mappings = {
     run = "<C-b>",
     restart = "<C-S-b>",
@@ -59,6 +79,9 @@ end
 ---@param options? ShinyOptions
 function shiny.setup(options)
   shiny.config = vim.tbl_deep_extend("force", vim.deepcopy(defaults), options or {})
+  if options and options.creation_templates ~= nil then
+    shiny.config.creation_templates = vim.deepcopy(options.creation_templates)
+  end
   require("shiny.rgolem").configure(shiny.config.golex)
 end
 

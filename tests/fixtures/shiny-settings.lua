@@ -1,4 +1,10 @@
 return {
+  creation_templates = {
+    {
+      name = "Tapyr",
+      source = "https://github.com/Appsilon/tapyr-template.git",
+    },
+  },
   mappings = {
     run = "<C-b>",
     restart = "<C-S-b>",

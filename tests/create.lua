@@ -1,6 +1,10 @@
 local create = require("shiny.create")
+local dialog = require("shiny.dialog")
 local messages = require("shiny.messages")
+local shiny = require("shiny")
 
+local original_config = vim.deepcopy(shiny.config)
+local original_menu = dialog.menu
 local original_filereadable = vim.fn.filereadable
 local original_fs_stat = vim.uv.fs_stat
 local original_input = vim.ui.input
@@ -35,6 +39,10 @@ assert(
 assert(
   not create.command("https://example.com/template", "/tmp/new-app"),
   "unknown source was accepted"
+)
+assert(
+  create.describe({ source = source, create = function() end }) == "invalid",
+  "ambiguous template provider was accepted"
 )
 
 local message
@@ -80,35 +88,118 @@ assert(message == "Could not create app: clone failed", "creation failure was no
 
 local prompted_source
 local prompted_destination
+local prompt_options
+local menu_choices
 local confirmed = 0
+local golem_available = false
+local golem_destination
+shiny.setup({
+  creation_templates = {
+    {
+      name = "Tapyr",
+      source = "https://github.com/Appsilon/tapyr-template.git",
+    },
+    {
+      name = "golem",
+      create = function(destination)
+        golem_destination = destination
+        return true
+      end,
+      available = function()
+        return golem_available
+      end,
+      description = "golem::create_golem()",
+    },
+  },
+})
 create.run = function(template, destination)
   prompted_source = template
   prompted_destination = destination
   return true
 end
-vim.ui.input = function(_, callback)
+dialog.menu = function(parent, title, choices, callback)
+  assert(parent == 42, "template menu lost its parent window")
+  assert(title == "New Shiny app", "template menu title changed")
+  menu_choices = choices
+  callback(choices[1].value)
+end
+vim.ui.input = function(options, callback)
+  prompt_options = options
   callback("/tmp/prompted-app")
 end
-create.prompt("/tmp/workspace", function()
+create.prompt(42, function()
   confirmed = confirmed + 1
 end)
+assert(#menu_choices == 1, "unavailable golem hook was offered")
+assert(menu_choices[1].label == "Tapyr (Appsilon/tapyr-template)", "Tapyr choice changed")
+assert(
+  menu_choices[1].url == "https://github.com/Appsilon/tapyr-template",
+  "Tapyr repository link changed"
+)
 assert(
   prompted_source == "https://github.com/Appsilon/tapyr-template.git",
   "configured template was not used"
 )
 assert(prompted_destination == "/tmp/prompted-app", "prompt destination changed")
+assert(
+  prompt_options.default == vim.uv.cwd() .. "/",
+  "prompt did not default to the working directory"
+)
 assert(confirmed == 1, "successful prompt did not close the panel")
+
+golem_available = true
+dialog.menu = function(_, _, choices, callback)
+  menu_choices = choices
+  callback(choices[2].value)
+end
+vim.ui.input = function(_, callback)
+  callback("/tmp/my.golem")
+end
+create.prompt(42, function()
+  confirmed = confirmed + 1
+end)
+assert(#menu_choices == 2, "installed golem hook was not offered")
+assert(menu_choices[2].label == "golem (golem::create_golem())", "golem choice changed")
+assert(golem_destination == "/tmp/my.golem", "golem hook lost the selected destination")
+assert(confirmed == 2, "successful golem prompt did not close the panel")
 
 vim.ui.input = function(_, callback)
   callback(nil)
 end
-create.prompt("/tmp/workspace", function()
+create.prompt(42, function()
   confirmed = confirmed + 1
 end)
-assert(confirmed == 1, "cancelled prompt closed the panel")
+assert(confirmed == 2, "cancelled prompt closed the panel")
+
+create.run = original_run
+shiny.setup({
+  creation_templates = {
+    {
+      name = "script",
+      command = { "create-app", "--output", "{destination}" },
+    },
+  },
+})
+assert(#shiny.config.creation_templates == 1, "custom template list retained a default entry")
+dialog.menu = function(_, _, choices, callback)
+  callback(choices[1].value)
+end
+vim.ui.input = function(_, callback)
+  callback("/tmp/100%app")
+end
+vim.system = function(value, _, callback)
+  command = value
+  callback({ code = 0 })
+end
+create.prompt(42)
+assert(
+  vim.deep_equal(command, { "create-app", "--output", "/tmp/100%app" }),
+  "custom command did not receive the destination as one argv value"
+)
 
 vim.fn.delete(source, "rf")
-create.run = original_run
+shiny.setup(original_config)
+dialog.menu = original_menu
 messages.show = original_show
 vim.fn.filereadable = original_filereadable
 vim.fn.mkdir = original_mkdir

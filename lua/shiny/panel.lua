@@ -1,6 +1,7 @@
 local panel = {}
 
 local apps = require("shiny.apps")
+local create = require("shiny.create")
 local messages = require("shiny.messages")
 local registry = require("shiny.registry")
 local rgolem_view = require("shiny.rgolem.view")
@@ -62,7 +63,7 @@ local actions = {
     keys = { "N" },
     label = "N",
     footer = "new app template",
-    help = "create an app from the configured template",
+    help = "choose a configured app template",
   },
   close = {
     keys = { "q", "<Esc>" },
@@ -139,8 +140,7 @@ local settings_items = {
 
 local golex_help = {
   { label = "Enter", help = "create input or open the selected Golex item" },
-  { label = "N / i", help = "edit the current Golex input row" },
-  { label = "n", help = "create the next numbered Golex app" },
+  { label = "N", help = "edit the next numbered Golex app name" },
   { label = "d", help = "delete the selected app or shelf after confirmation" },
   { label = "S", help = "switch between Golex apps and shelves" },
 }
@@ -191,7 +191,7 @@ local function footer_items(state)
   end
   if view == "settings" then
     return {
-      { label = "Enter", text = "edit mapping" },
+      { label = "Enter", text = "edit setting" },
       { label = "q", text = "close" },
     }
   end
@@ -358,25 +358,47 @@ local function draw_apps(state)
 end
 
 local function draw_settings(state)
-  local mappings = require("shiny").config.mappings
+  local config = require("shiny").config
+  local width = vim.api.nvim_win_get_width(state.win)
   local lines = {
     view_bar(state),
     "",
+    "Mappings",
     text.column("action", 18) .. " " .. text.column("key", 14) .. " behavior",
-    string.rep("-", 74),
+    string.rep("-", width),
   }
 
   for _, item in ipairs(settings_items) do
     local line_number = #lines + 1
     register_item(state, line_number, {
       kind = "setting",
-      mapping = item.mapping,
+      setting = item.mapping,
+      setting_label = item.mapping .. " mapping",
     }, "setting:" .. item.mapping)
     lines[#lines + 1] = text.column(item.name, 18)
       .. " "
-      .. text.column(mapping_label(mappings[item.mapping]), 14)
+      .. text.column(mapping_label(config.mappings[item.mapping]), 14)
       .. " "
-      .. item.behavior
+      .. text.shorten(item.behavior, math.max(width - 34, 1))
+  end
+
+  lines[#lines + 1] = ""
+  lines[#lines + 1] = "Creation templates"
+  lines[#lines + 1] = text.column("name", 18) .. " " .. text.column("provider", 12) .. " source"
+  lines[#lines + 1] = string.rep("-", width)
+  for index, template in ipairs(config.creation_templates) do
+    local provider, description = create.describe(template)
+    local line_number = #lines + 1
+    register_item(state, line_number, {
+      kind = "setting",
+      setting = "creation_templates",
+      setting_label = "creation_templates setting",
+    }, "template:" .. index .. ":" .. template.name)
+    lines[#lines + 1] = text.column(template.name, 18)
+      .. " "
+      .. text.column(provider, 12)
+      .. " "
+      .. text.shorten(description, math.max(width - 32, 1))
   end
 
   return lines
@@ -552,6 +574,7 @@ local function wipe_float(win, buf)
 end
 
 local function close(state)
+  rgolem_view.close_input(state)
   wipe_float(state.detail_win, state.detail_buf)
   state.detail_refresh = nil
   require("shiny.footer").close(state.footer)
@@ -602,11 +625,20 @@ local function draw(state, keep_selection)
     end_col = hint_start + 8,
     hl_group = "Comment",
   })
-  if view == "apps" or view == "settings" then
+  if view == "apps" then
     vim.api.nvim_buf_set_extmark(state.buf, highlight_namespace, 2, 0, {
       end_col = #lines[3],
       hl_group = { "DiagnosticOk", "Bold" },
     })
+  elseif view == "settings" then
+    for line_number, line in ipairs(lines) do
+      if line == "Mappings" or line == "Creation templates" then
+        vim.api.nvim_buf_set_extmark(state.buf, highlight_namespace, line_number - 1, 0, {
+          end_col = #line,
+          hl_group = { "DiagnosticOk", "Bold" },
+        })
+      end
+    end
   elseif view == "golex" then
     for _, line_number in ipairs({ 2, 4, 6 }) do
       if lines[line_number] and lines[line_number] ~= "" then
@@ -855,7 +887,7 @@ local function open_app_details(state, row)
   end
 end
 
-local function open_settings_file(state, mapping)
+local function open_settings_file(state, setting, setting_label)
   local path = require("shiny").config.settings_path
   path = type(path) == "string" and vim.fn.expand(path) or nil
   if not path or vim.fn.filereadable(path) ~= 1 then
@@ -865,7 +897,7 @@ local function open_settings_file(state, mapping)
 
   local target_line
   for line_number, line in ipairs(vim.fn.readfile(path)) do
-    if line:match("^%s*" .. mapping .. "%s*=") then
+    if line:match("^%s*" .. setting .. "%s*=") then
       target_line = line_number
       break
     end
@@ -876,7 +908,7 @@ local function open_settings_file(state, mapping)
   if target_line then
     vim.api.nvim_win_set_cursor(0, { target_line, 0 })
   else
-    messages.show("Could not find the " .. mapping .. " mapping", vim.log.levels.WARN)
+    messages.show("Could not find the " .. setting_label, vim.log.levels.WARN)
   end
 end
 
@@ -891,7 +923,7 @@ local function open_selected(state)
   elseif item.kind == "app" then
     open_app_details(state, item.row)
   elseif item.kind == "setting" then
-    open_settings_file(state, item.mapping)
+    open_settings_file(state, item.setting, item.setting_label)
   elseif item.kind == "link" then
     vim.ui.open(item.url)
   end
@@ -975,11 +1007,11 @@ function panel.open(root, current_app, initial_view)
   end, "Shiny: open selected item")
   map(state, actions.new.keys[1], function()
     if active_view(state) == "apps" then
-      require("shiny.create").prompt(state.root, function()
+      create.prompt(state.win, function()
         close(state)
       end)
     elseif active_view(state) == "golex" then
-      rgolem_view.edit_input(state, state.golex_api)
+      rgolem_view.new_input(state, state.golex_api)
     end
   end, "Shiny: create in current view")
   map(state, actions.move.keys[1], function()
@@ -1056,56 +1088,6 @@ function panel.open(root, current_app, initial_view)
       rgolem_view.toggle_shelves(state, state.golex_api)
     end
   end, "Shiny: switch Golex view")
-  map(state, "n", function()
-    if active_view(state) == "golex" then
-      rgolem_view.next(state, state.golex_api)
-    end
-  end, "Shiny: create next Golex app")
-  for _, key in ipairs({ "i", "a", "I", "A", "o", "O" }) do
-    map(state, key, function()
-      if active_view(state) == "golex" then
-        rgolem_view.edit_input(state, state.golex_api)
-      end
-    end, "Shiny: edit Golex input")
-  end
-  vim.api.nvim_create_autocmd("InsertLeave", {
-    buffer = state.buf,
-    callback = function()
-      if active_view(state) == "golex" then
-        rgolem_view.capture(state)
-        vim.api.nvim_set_option_value("modifiable", false, { buf = state.buf })
-      end
-    end,
-  })
-  vim.api.nvim_create_autocmd("CursorMovedI", {
-    buffer = state.buf,
-    callback = function()
-      if active_view(state) ~= "golex" then
-        return
-      end
-      local line = vim.api.nvim_win_get_cursor(state.win)[1]
-      if state.items_by_line[line] and state.items_by_line[line].kind == "golex_input" then
-        return
-      end
-      for input_line, item in pairs(state.items_by_line) do
-        if item.kind == "golex_input" then
-          local input = vim.api.nvim_buf_get_lines(state.buf, input_line - 1, input_line, false)[1]
-          vim.api.nvim_win_set_cursor(state.win, { input_line, #input })
-          return
-        end
-      end
-    end,
-  })
-  vim.keymap.set("i", "<CR>", function()
-    vim.cmd.stopinsert()
-    if active_view(state) == "golex" then
-      open_selected(state)
-    end
-  end, {
-    buffer = state.buf,
-    desc = "Shiny: submit Golex input",
-    silent = true,
-  })
   map(state, actions.close.keys[1], function()
     close(state)
   end, "Shiny: close")

@@ -3,29 +3,6 @@ local entries = {}
 local project = require("shiny.project")
 local pattern = "^golex(%d+)$"
 
----@param value string
----@return string?, string?
-function entries.resolve(value)
-  value = vim.trim(value)
-  if value == "" then
-    return nil, "Enter a Golex app name or number"
-  end
-
-  local number = value:match("^%d+$")
-  if number then
-    return string.format("golex%02d", tonumber(number))
-  end
-  if
-    #value < 2
-    or not value:match("^[A-Za-z][A-Za-z0-9.]*$")
-    or value:sub(-1) == "."
-    or value:find("..", 1, true)
-  then
-    return nil, "Use an R package name with letters, numbers, and dots"
-  end
-  return value
-end
-
 ---@param shelf string
 ---@return string[]
 function entries.scan(shelf)

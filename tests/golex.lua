@@ -2,6 +2,7 @@ local create = require("shiny.rgolem.create")
 local entries = require("shiny.rgolem.entries")
 local launch = require("shiny.rgolem.launch")
 local messages = require("shiny.messages")
+local name = require("shiny.rgolem.name")
 local shelves = require("shiny.rgolem.shelves")
 
 local root = vim.fn.tempname()
@@ -26,12 +27,16 @@ shelves.configure({
 assert(shelves.active() == other, "active shelf was not persisted")
 assert(#shelves.all() == 2, "shelf list was not persisted")
 
-assert(entries.resolve("7") == "golex07", "single-digit Golex name was not padded")
-assert(entries.resolve("12") == "golex12", "multi-digit Golex name changed")
-assert(entries.resolve("my.app") == "my.app", "valid R package name was rejected")
-assert(entries.resolve("../escape") == nil, "path traversal was accepted")
-assert(entries.resolve("bad_name") == nil, "invalid R package name was accepted")
-assert(entries.resolve(".hidden") == nil, "hidden directory name was accepted")
+assert(name.resolve("7") == "golex07", "single-digit Golex name was not padded")
+assert(name.resolve("12") == "golex12", "multi-digit Golex name changed")
+assert(name.resolve("my.app") == "my.app", "valid R package name was rejected")
+assert(name.resolve("my..app") == "my..app", "R-compatible consecutive dots were rejected")
+assert(name.resolve("a") == nil, "single-character package name was accepted")
+assert(name.resolve("../escape") == nil, "path traversal was accepted")
+assert(name.resolve("bad_name") == nil, "invalid R package name was accepted")
+assert(name.resolve(".hidden") == nil, "hidden directory name was accepted")
+assert(name.resolve("bad.") == nil, "trailing dot was accepted")
+assert(name.resolve("mýapp") == nil, "non-ASCII package name was accepted")
 
 vim.fn.mkdir(vim.fs.joinpath(other, "golex02"), "p")
 vim.fn.mkdir(vim.fs.joinpath(other, "golex01"), "p")
@@ -67,10 +72,22 @@ local original_show = messages.show
 local system_command
 local created
 messages.show = function() end
+vim.system = function()
+  return {
+    wait = function()
+      return { code = 0 }
+    end,
+  }
+end
+assert(create.available(), "installed golem package was not available to Apps")
 vim.system = function(argv, _, callback)
   system_command = argv
   callback({ code = 0, stdout = "", stderr = "" })
 end
+assert(
+  not create.path(vim.fs.joinpath(other, "bad_name")),
+  "Apps creation accepted an invalid R package name"
+)
 assert(
   create.at(other, "newapp", false, function(ok, path)
     created = ok and path

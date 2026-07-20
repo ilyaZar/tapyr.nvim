@@ -80,8 +80,6 @@ Defaults:
 >
   require("shiny").setup({
     settings_path = nil,
-    template_path_new_app =
-      "https://github.com/Appsilon/tapyr-template.git",
     mappings = {
       run = "<C-b>",
       restart = "<C-S-b>",
@@ -100,9 +98,39 @@ Defaults:
 <
 Set a mapping to false to disable it.
 
-settings_path may identify the readable Lua file containing the mappings.
+settings_path may identify the readable Lua file containing the configuration.
 Selecting a Settings row opens that file. Shiny never creates or overwrites
 the settings file.
+
+creation_templates is an ordered Lua list shared by the Apps N chooser and the
+Settings tab. The defaults are Tapyr from Appsilon/tapyr-template and golem
+through golem::create_golem(). golem is offered only when its R package is
+installed.
+
+Each entry has a name and one creation mechanism:
+>
+  local golem = require("shiny.rgolem.create")
+  creation_templates = {
+    {
+      name = "Tapyr",
+      source = "https://github.com/Appsilon/tapyr-template.git",
+    },
+    {
+      name = "golem",
+      create = golem.path,
+      available = golem.available,
+      description = "golem::create_golem()",
+    },
+    { name = "local", source = "~/templates/shiny" },
+    {
+      name = "script",
+      command = { "create-shiny", "--output", "{destination}" },
+    },
+  }
+<
+A source is a GitHub repository or local directory. A command is an argv array
+containing {destination}; it never runs through a shell. A create function is a
+Lua hook. Providing the list replaces the defaults and controls chooser order.
 
 golex.open_cmd is an argv array. A bare nvim command uses
 xdg-terminal-exec, Ghostty, or Alacritty on Linux. Code, Positron, and RStudio
@@ -133,25 +161,30 @@ R                       Start or restart the selected app.
 X                       Stop the selected running app.
 b                       Open the selected app in the browser.
 r                       Refresh app state.
-N                       Create a Python app from the configured template.
+N                       Choose an app template and destination.
 
 Golex:
 
 Enter                   Create input or open the selected item.
 d                       Delete the selected app or shelf after confirmation.
 S                       Switch between projects and shelves.
-n                       Create the next numbered Golex app.
-N / i                   Edit the current Golex input row.
+N                       Edit the next numbered Golex app name.
 
 Settings:
 
-Enter                   Open the selected mapping in settings_path.
+Enter                   Open the selected setting in settings_path.
 
 Help:
 
 Enter                   Open the selected project link.
 
 Actions not shown for the current tab are inactive.
+
+Apps N defaults the destination input to Neovim's current working directory.
+Tapyr clones its GitHub template. golem validates the destination basename as
+an R package name before calling golem::create_golem().
+
+Settings has separate Mappings and Creation templates sections.
 
 ==============================================================================
 6. Lifecycle                                                 *shiny-lifecycle*
@@ -180,8 +213,13 @@ Python commands. It is optional for managed apps.
 ==============================================================================
 7. Golex                                                         *shiny-golex*
 
-The Golex tab keeps an editable row above selectable scratch projects. Type an
-R package name or number and press Enter. Numeric input becomes golexNN.
+The Golex tab keeps an input row above selectable scratch projects. N proposes
+the next numbered name. Change it if needed and press Enter. The isolated
+one-line editor cannot modify the rest of the panel.
+
+Custom names must have at least two characters, start with an ASCII letter,
+contain only ASCII letters, digits, or dots, and not end with a dot. Numeric
+input becomes golexNN.
 
 Enter on a project opens the Open/Recreate dialog. d asks before recursively
 deleting it. S opens shelves, where the editable row adds a directory and

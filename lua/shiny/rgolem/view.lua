@@ -5,6 +5,7 @@ local dialog = require("shiny.dialog")
 local entries = require("shiny.rgolem.entries")
 local launch = require("shiny.rgolem.launch")
 local messages = require("shiny.messages")
+local name = require("shiny.rgolem.name")
 local shelves = require("shiny.rgolem.shelves")
 local text = require("shiny.text")
 
@@ -23,6 +24,10 @@ local function input_key(state)
 end
 
 local function input_value(state)
+  local edit = state.golex_edit
+  if edit and edit.mode == mode(state) and vim.api.nvim_buf_is_valid(edit.buf) then
+    return vim.api.nvim_buf_get_lines(edit.buf, 0, 1, false)[1] or ""
+  end
   local item = state.line_by_key and state.line_by_key[input_key(state)]
   if item and vim.api.nvim_buf_is_valid(state.buf) then
     local line = vim.api.nvim_buf_get_lines(state.buf, item - 1, item, false)[1] or ""
@@ -116,7 +121,6 @@ function view.footer(state)
     { label = "Enter", text = "create/open" },
     { label = "d", text = "delete" },
     { label = "S", text = "shelves" },
-    { label = "n", text = "next Golex app" },
     { label = "N", text = "new Golex app" },
     { label = "q", text = "close" },
   }
@@ -152,8 +156,8 @@ local function open_entry(state, item, api)
     return
   end
   dialog.choose(state.win, item.name, {
-    { label = "Open", value = "open", key = "o" },
-    { label = "Recreate", value = "recreate", key = "R" },
+    { label = "Open", value = "open" },
+    { label = "Recreate", value = "recreate" },
   }, function(action)
     if action == "open" and launch.open(path, item.name) then
       api.close()
@@ -165,20 +169,20 @@ end
 
 local function create_input(state, api)
   local input = input_value(state)
-  local name, error_message = entries.resolve(input)
-  if not name then
+  local package_name, error_message = name.resolve(input)
+  if not package_name then
     messages.show(error_message, vim.log.levels.WARN)
     return
   end
 
   local shelf = shelves.active()
-  if entries.exists(shelf, name) then
-    recreate(state, { shelf = shelf, name = name }, api)
+  if entries.exists(shelf, package_name) then
+    recreate(state, { shelf = shelf, name = package_name }, api)
     return
   end
 
   state.golex_input.apps = ""
-  create.at(shelf, name, false, api.refresh)
+  create.at(shelf, package_name, false, api.refresh)
   api.draw(true)
 end
 
@@ -271,27 +275,121 @@ function view.toggle_shelves(state, api)
 end
 
 ---@param state table
----@param api table
-function view.next(state, api)
-  if mode(state) ~= "apps" then
-    return
+local function discard_input(state)
+  local edit = state.golex_edit
+  state.golex_edit = nil
+  if edit and edit.win and vim.api.nvim_win_is_valid(edit.win) then
+    vim.api.nvim_win_close(edit.win, true)
   end
-  view.capture(state)
-  create.next(shelves.active(), api.refresh)
+  if edit and edit.buf and vim.api.nvim_buf_is_valid(edit.buf) then
+    vim.api.nvim_buf_delete(edit.buf, { force = true })
+  end
+end
+
+---@param state table
+function view.close_input(state)
+  discard_input(state)
 end
 
 ---@param state table
 ---@param api table
-function view.edit_input(state, api)
+function view.new_input(state, api)
+  view.capture(state)
+  view.close_input(state)
+
+  local current_mode = mode(state)
+  if current_mode == "apps" then
+    state.golex_input.apps = name.numbered(entries.next_number(shelves.active()))
+  else
+    state.golex_input.shelves = ""
+  end
+  api.draw(true)
+
   local line = state.line_by_key[input_key(state)]
   if not line then
     return
   end
   api.select(line)
-  vim.api.nvim_set_option_value("modifiable", true, { buf = state.buf })
-  vim.api.nvim_win_set_cursor(state.win, {
-    line,
-    #prefixes[mode(state)] + #input_value(state),
+
+  local value = state.golex_input[current_mode]
+  local prefix = prefixes[current_mode]
+  local buf = vim.api.nvim_create_buf(false, true)
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, { value })
+  vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = buf })
+  vim.api.nvim_set_option_value("filetype", "shiny-input", { buf = buf })
+  local win = vim.api.nvim_open_win(buf, true, {
+    relative = "win",
+    win = state.win,
+    width = math.max(vim.api.nvim_win_get_width(state.win) - #prefix, 1),
+    height = 1,
+    row = line - 1,
+    col = #prefix,
+    style = "minimal",
+    zindex = 70,
+  })
+  vim.api.nvim_set_option_value("winhighlight", "Normal:Visual,EndOfBuffer:Visual", { win = win })
+  vim.api.nvim_win_set_cursor(win, { 1, #value })
+  state.golex_edit = { mode = current_mode, buf = buf, win = win }
+
+  local closed = false
+  local last_value = value
+  local restoring = false
+  local function finish(submit)
+    if closed then
+      return
+    end
+    closed = true
+    local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+    if #lines == 1 then
+      last_value = lines[1]
+    end
+    state.golex_input[current_mode] = last_value
+    discard_input(state)
+    if not vim.api.nvim_win_is_valid(state.win) then
+      return
+    end
+    vim.api.nvim_set_current_win(state.win)
+    api.draw(true)
+    if submit then
+      if current_mode == "apps" then
+        create_input(state, api)
+      else
+        add_shelf(state, api)
+      end
+    end
+  end
+  state.golex_edit.finish = finish
+
+  vim.api.nvim_create_autocmd("TextChangedI", {
+    buffer = buf,
+    callback = function()
+      if restoring then
+        return
+      end
+      local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+      if #lines == 1 then
+        last_value = lines[1]
+        return
+      end
+      restoring = true
+      vim.api.nvim_buf_set_lines(buf, 0, -1, false, { last_value })
+      vim.api.nvim_win_set_cursor(win, { 1, #last_value })
+      restoring = false
+    end,
+  })
+  vim.api.nvim_create_autocmd({ "InsertLeave", "BufLeave" }, {
+    buffer = buf,
+    once = true,
+    callback = function()
+      finish(false)
+    end,
+  })
+  vim.keymap.set("i", "<CR>", function()
+    finish(true)
+  end, {
+    buffer = buf,
+    desc = "Shiny: submit Golex input",
+    silent = true,
   })
   vim.cmd.startinsert()
 end

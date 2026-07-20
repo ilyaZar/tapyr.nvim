@@ -88,8 +88,6 @@ Shiny initializes automatically. Its defaults can be changed through `opts`:
   },
   opts = {
     settings_path = vim.fn.stdpath("config") .. "/lua/plugins/shiny.lua",
-    template_path_new_app =
-      "https://github.com/Appsilon/tapyr-template.git",
     mappings = {
       run = "<C-b>",
       restart = "<C-S-b>",
@@ -110,6 +108,40 @@ Shiny initializes automatically. Its defaults can be changed through `opts`:
 
 Set an individual mapping to `false` to disable it. The two Golem mappings are
 attached only inside a detected golem package.
+
+`creation_templates` is an ordered Lua list used by both the Apps `[N]` chooser
+and the Settings tab. The defaults are `Tapyr`, cloned from
+`Appsilon/tapyr-template`, and `golem`, created through
+`golem::create_golem()`. The latter is offered only when the `{golem}` package
+is installed.
+
+A custom entry may use a GitHub repository or local directory as `source`, an
+argv-based `command` containing `{destination}`, or a Lua `create` hook:
+
+```lua
+local golem = require("shiny.rgolem.create")
+
+creation_templates = {
+  {
+    name = "Tapyr",
+    source = "https://github.com/Appsilon/tapyr-template.git",
+  },
+  {
+    name = "golem",
+    create = golem.path,
+    available = golem.available,
+    description = "golem::create_golem()",
+  },
+  { name = "local", source = "~/templates/shiny" },
+  {
+    name = "script",
+    command = { "create-shiny", "--output", "{destination}" },
+  },
+}
+```
+
+Providing this list replaces the defaults, so its order is also the chooser
+order. Commands are argv arrays and are never passed through a shell.
 
 `golex.open_cmd` is an argv array. `{ "nvim" }` uses `xdg-terminal-exec`,
 Ghostty, or Alacritty on Linux. GUI launchers such as `{ "code" }`,
@@ -165,23 +197,30 @@ keys, `gg`, and `G` move between selectable rows. `q` or `Esc` closes the panel.
 Every tab uses the same bracketed footer syntax, but only its visible actions
 are active:
 
-- Apps: app details, restart, stop, browser, refresh, Python template, close
-- Golex: create/open, delete, shelves, next app, new Golex app, close
-- Settings: edit mapping, close
+- Apps: app details, restart, stop, browser, refresh, app template, close
+- Golex: create/open, delete, shelves, new Golex app, close
+- Settings: edit setting, close
 - Help: open link, close
 
 Apps shows backend, state, assigned port, process details when available, launch
 command, and project. `Enter` opens backend-aware details.
 
-Settings shows the effective shared and Golem-specific mappings. Selecting a
-mapping opens `settings_path` when that readable file is configured. Shiny never
-creates or overwrites the settings file.
+Apps `[N]` first chooses an available creation template, then asks for the full
+destination path. The path starts in Neovim's current working directory. Tapyr
+clones its GitHub template; golem validates the final directory name as an R
+package name before calling `golem::create_golem()`.
+
+Settings has separate Mappings and Creation templates sections. Selecting a
+row opens its field in `settings_path` when that readable Lua file is
+configured. Shiny never creates or overwrites the settings file.
 
 ## Golex
 
-The Golex tab keeps an editable row above the selectable projects. Press `N` or
-`i`, type an R package name or number, and press `Enter`. Numeric input is
-formatted with at least two digits.
+The Golex tab keeps an input row above the selectable projects. Press `N` to
+start with the next numbered name, change it if needed, and press `Enter`.
+Typing happens in an isolated one-line input, so the rest of the panel cannot
+be edited. Custom names follow R's package-name rule: at least two characters,
+an ASCII letter first, only ASCII letters, digits, or dots, and no trailing dot.
 
 On a project row:
 
