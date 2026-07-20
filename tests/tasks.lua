@@ -120,9 +120,12 @@ assert(
 
 local project_shiny = "/tmp/project/.venv/bin/shiny"
 project_executables[project_shiny] = true
+local project_command = tasks.resolve("run", project_app, 8123)
+assert(project_command[1] == project_shiny, "parent project Shiny was not preferred")
+assert(project_command[4] == "--reload-excludes", "project environment was not excluded")
 assert(
-  tasks.resolve("run", project_app, 8123)[1] == project_shiny,
-  "parent project Shiny was not preferred"
+  project_command[5]:find("/tmp/project/.venv", 1, true),
+  "project environment exclusion was not absolute"
 )
 project_executables[project_shiny] = nil
 
@@ -218,6 +221,10 @@ prepare_task:complete(status.SUCCESS)
 local prepared_app_task = created[#created]
 assert(#created == created_before_prepare + 2, "successful preparation did not start the app")
 assert(prepared_app_task.spec.cmd[1] == uv_shiny, "prepared Shiny executable was not used")
+assert(
+  prepared_app_task.spec.cmd[5]:find(uv_root .. "/.venv", 1, true),
+  "prepared environment was not excluded from reload"
+)
 assert(prepared_app_task.starts == 1, "prepared app was not started")
 assert(prepared_app_task.restarts == 0, "repeated actions started the prepared app more than once")
 assert(prepared_started, "prepared app did not complete the restart handoff")
