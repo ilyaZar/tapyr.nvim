@@ -1,16 +1,18 @@
 local panel = {}
 
-local apps = require("tapyr.apps")
-local messages = require("tapyr.messages")
-local registry = require("tapyr.registry")
-local tasks = require("tapyr.tasks")
-local text = require("tapyr.text")
+local apps = require("shiny.apps")
+local messages = require("shiny.messages")
+local registry = require("shiny.registry")
+local rgolem_view = require("shiny.rgolem.view")
+local tasks = require("shiny.tasks")
+local text = require("shiny.text")
 
-local highlight_namespace = vim.api.nvim_create_namespace("tapyr.panel")
-local selection_namespace = vim.api.nvim_create_namespace("tapyr.panel.selection")
+local highlight_namespace = vim.api.nvim_create_namespace("shiny.panel")
+local selection_namespace = vim.api.nvim_create_namespace("shiny.panel.selection")
 
 local views = {
   { key = "apps", label = "Apps" },
+  { key = "golex", label = "Golex" },
   { key = "settings", label = "Settings" },
   { key = "help", label = "Help" },
 }
@@ -30,7 +32,7 @@ local actions = {
     keys = { "<CR>" },
     label = "Enter",
     footer = "app info",
-    help = "app info or edit selected Settings mapping",
+    help = "use the selected item",
   },
   restart = {
     keys = { "R" },
@@ -71,7 +73,6 @@ local actions = {
   },
 }
 
-local footer_actions = { "info", "restart", "stop", "browser", "refresh", "new", "close" }
 local help_actions = {
   "views",
   "move",
@@ -86,7 +87,7 @@ local help_actions = {
 
 local about_links = {
   {
-    label = "Tapyr repository",
+    label = "Project repository",
     url = "https://github.com/ilyaZar/tapyr.nvim",
   },
   {
@@ -107,23 +108,41 @@ local settings_items = {
   {
     name = "run app",
     mapping = "run",
-    behavior = tasks.describe("run"),
+    behavior = "run with the detected backend",
   },
   {
     name = "restart app",
     mapping = "restart",
-    behavior = tasks.describe("run"),
+    behavior = "restart the managed backend task",
   },
   {
     name = "test app",
     mapping = "test",
-    behavior = tasks.describe("test"),
+    behavior = "test with the detected backend",
   },
   {
     name = "panel",
     mapping = "panel",
-    behavior = "open Tapyr panel",
+    behavior = "open Shiny panel",
   },
+  {
+    name = "document Golem",
+    mapping = "document_reload",
+    behavior = "R.nvim document and reload",
+  },
+  {
+    name = "run Golem dev",
+    mapping = "run_dev",
+    behavior = "R.nvim project dev script",
+  },
+}
+
+local golex_help = {
+  { label = "Enter", help = "create input or open the selected Golex item" },
+  { label = "N / i", help = "edit the current Golex input row" },
+  { label = "n", help = "create the next numbered Golex app" },
+  { label = "d", help = "delete the selected app or shelf after confirmation" },
+  { label = "S", help = "switch between Golex apps and shelves" },
 }
 
 local function mapping_label(mapping)
@@ -161,24 +180,43 @@ local function view_bar(state)
   return tabs .. string.rep(" ", math.max(width - #tabs - #hint, 2)) .. hint
 end
 
-local function footer()
-  local chunks = { { " " } }
-  for index, name in ipairs(footer_actions) do
-    local action = actions[name]
-    chunks[#chunks + 1] = {
-      "[" .. (action.footer_label or action.label) .. "]",
-      "DiagnosticOk",
-    }
-    chunks[#chunks + 1] = {
-      " " .. action.footer .. (index == #footer_actions and " " or "  "),
+local function active_view(state)
+  return views[state.view].key
+end
+
+local function footer_items(state)
+  local view = active_view(state)
+  if view == "golex" then
+    return rgolem_view.footer(state)
+  end
+  if view == "settings" then
+    return {
+      { label = "Enter", text = "edit mapping" },
+      { label = "q", text = "close" },
     }
   end
-  return chunks
+  if view == "help" then
+    return {
+      { label = "Enter", text = "open link" },
+      { label = "q", text = "close" },
+    }
+  end
+  local items = {}
+  for _, name in ipairs(help_actions) do
+    local action = actions[name]
+    if action.footer then
+      items[#items + 1] = {
+        label = action.footer_label or action.label,
+        text = action.footer,
+      }
+    end
+  end
+  return items
 end
 
 local function title(root)
   return {
-    { " Tapyr ", "FloatTitle" },
+    { " Shiny ", "FloatTitle" },
     { text.shorten(vim.fs.basename(root or vim.uv.cwd()), 52), "Comment" },
     { " ", "FloatTitle" },
   }
@@ -215,27 +253,44 @@ local function register_item(state, line, item, key)
   end
 end
 
-local function draw_apps(state)
+local function app_snapshot(state)
   local definitions, registry_notes = registry.load(state.root, state.current_app)
   local running, process_note = apps.find()
-  local rows = apps.merge(definitions, running)
-  state.rows = rows
+  return apps.merge(definitions, running), registry_notes, process_note
+end
 
-  local lines = {
-    view_bar(state),
-    "",
-    text.column("state", 9)
+local function draw_apps(state)
+  local rows, registry_notes, process_note = app_snapshot(state)
+  state.rows = rows
+  state.awaiting_pid = false
+  local width = vim.api.nvim_win_get_width(state.win)
+  local compact = width < 100
+
+  local lines = { view_bar(state), "" }
+  if compact then
+    local app_width = math.max(width - 27, 8)
+    lines[#lines + 1] = text.column("state", 9)
       .. " "
-      .. text.column("app", 20)
+      .. text.column("backend", 8)
+      .. " "
+      .. text.column("app", app_width)
+      .. " port"
+    lines[#lines + 1] = string.rep("-", width)
+  else
+    lines[#lines + 1] = text.column("state", 9)
+      .. " "
+      .. text.column("backend", 8)
+      .. " "
+      .. text.column("app", 18)
       .. " "
       .. text.column("port", 6)
       .. " "
       .. text.column("pid", 8)
       .. " "
       .. text.column("launch", 32)
-      .. " project",
-    string.rep("-", 100),
-  }
+      .. " project"
+    lines[#lines + 1] = string.rep("-", 100)
+  end
 
   if vim.tbl_isempty(rows) then
     lines[#lines + 1] = "No tracked or running Shiny apps found"
@@ -256,27 +311,54 @@ local function draw_apps(state)
       kind = "app",
       row = row,
     }, key)
-    lines[#lines + 1] = text.column(row.state, 9)
-      .. " "
-      .. text.column(row.name, 20)
-      .. " "
-      .. text.column(
-        session and session.port or row.definition and tasks.port(row.definition) or "-",
-        6
-      )
-      .. " "
-      .. text.column(session and session.pid or "-", 8)
-      .. " "
-      .. text.column(session and session.launch or "-", 32)
-      .. " "
-      .. text.shorten(path_label(row.root, state.root), 34)
+    local backend_name = row.definition and row.definition.backend or row.session.backend
+    if
+      not process_note
+      and session
+      and session.managed
+      and not session.pid
+      and backend_name == "python"
+    then
+      state.awaiting_pid = true
+    end
+    local port = session and session.port or row.definition and tasks.port(row.definition) or "-"
+    if compact then
+      local app_width = math.max(width - 27, 8)
+      lines[#lines + 1] = text.column(row.state, 9)
+        .. " "
+        .. text.column(backend_name, 8)
+        .. " "
+        .. text.column(row.name, app_width)
+        .. " "
+        .. text.shorten(port, 6)
+      lines[#lines + 1] = "  "
+        .. text.column("launch", 9)
+        .. text.shorten(session and session.launch or "-", math.max(width - 11, 1))
+      lines[#lines + 1] = "  "
+        .. text.column("project", 9)
+        .. text.shorten(path_label(row.root, state.root), math.max(width - 11, 1))
+    else
+      lines[#lines + 1] = text.column(row.state, 9)
+        .. " "
+        .. text.column(backend_name, 8)
+        .. " "
+        .. text.column(row.name, 18)
+        .. " "
+        .. text.column(port, 6)
+        .. " "
+        .. text.column(session and session.pid or "-", 8)
+        .. " "
+        .. text.column(session and session.launch or "-", 32)
+        .. " "
+        .. text.shorten(path_label(row.root, state.root), 34)
+    end
   end
 
   return lines
 end
 
 local function draw_settings(state)
-  local mappings = require("tapyr").config.mappings
+  local mappings = require("shiny").config.mappings
   local lines = {
     view_bar(state),
     "",
@@ -301,25 +383,46 @@ local function draw_settings(state)
 end
 
 local function draw_help(state)
-  local definitions, registry_notes = registry.load(state.root, state.current_app)
-  local running, process_note = apps.find()
-  local rows = apps.merge(definitions, running)
+  local rows, registry_notes, process_note = app_snapshot(state)
   local counts = {
+    golem = 0,
+    python = 0,
     running = 0,
     stopped = 0,
   }
   for _, row in ipairs(rows) do
     counts[row.state] = counts[row.state] + 1
+    local row_backend = row.definition and row.definition.backend or row.session.backend
+    if counts[row_backend] then
+      counts[row_backend] = counts[row_backend] + 1
+    end
   end
 
   local lines = {
     view_bar(state),
     "",
-    "Keys",
+    "About",
   }
 
+  for _, link in ipairs(about_links) do
+    local line_number = #lines + 1
+    register_item(state, line_number, {
+      kind = "link",
+      url = link.url,
+    }, "link:" .. link.url)
+    lines[#lines + 1] = "  " .. link.label
+  end
+
+  lines[#lines + 1] = ""
+  lines[#lines + 1] = "Keys"
   for _, name in ipairs(help_actions) do
     local action = actions[name]
+    lines[#lines + 1] = "  " .. text.column(action.label, 19) .. action.help
+  end
+
+  lines[#lines + 1] = ""
+  lines[#lines + 1] = "Golex keys"
+  for _, action in ipairs(golex_help) do
     lines[#lines + 1] = "  " .. text.column(action.label, 19) .. action.help
   end
 
@@ -329,6 +432,8 @@ local function draw_help(state)
   lines[#lines + 1] = "Apps"
   lines[#lines + 1] = "  " .. text.column("running", 12) .. counts.running
   lines[#lines + 1] = "  " .. text.column("stopped", 12) .. counts.stopped
+  lines[#lines + 1] = "  " .. text.column("Python", 12) .. counts.python
+  lines[#lines + 1] = "  " .. text.column("Golem", 12) .. counts.golem
   lines[#lines + 1] = "  " .. text.column("workspace", 12) .. workspace
 
   if process_note then
@@ -336,17 +441,6 @@ local function draw_help(state)
   end
   for _, note in ipairs(registry_notes) do
     lines[#lines + 1] = "  " .. note
-  end
-
-  lines[#lines + 1] = ""
-  lines[#lines + 1] = "About"
-  for _, link in ipairs(about_links) do
-    local line_number = #lines + 1
-    register_item(state, line_number, {
-      kind = "link",
-      url = link.url,
-    }, "link:" .. link.url)
-    lines[#lines + 1] = "  " .. link.label
   end
 
   return lines
@@ -368,6 +462,13 @@ local function selected_row(state)
     return nil
   end
   return item.row
+end
+
+local function selected_app(state)
+  if active_view(state) ~= "apps" then
+    return nil
+  end
+  return selected_row(state)
 end
 
 local function highlight_selection(state, line)
@@ -452,6 +553,8 @@ end
 
 local function close(state)
   wipe_float(state.detail_win, state.detail_buf)
+  state.detail_refresh = nil
+  require("shiny.footer").close(state.footer)
   wipe_float(state.win, state.buf)
 end
 
@@ -464,10 +567,14 @@ local function draw(state, keep_selection)
   state.selected_key = nil
   state.selected_line = nil
 
-  local view = views[state.view].key
+  local view = active_view(state)
   local lines
   if view == "apps" then
     lines = draw_apps(state)
+  elseif view == "golex" then
+    lines = rgolem_view.draw(state, view_bar(state), function(line, item, key)
+      register_item(state, line, item, key)
+    end)
   elseif view == "settings" then
     lines = draw_settings(state)
   else
@@ -477,6 +584,7 @@ local function draw(state, keep_selection)
   vim.api.nvim_set_option_value("modifiable", true, { buf = state.buf })
   vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, lines)
   vim.api.nvim_set_option_value("modifiable", false, { buf = state.buf })
+  state.footer = require("shiny.footer").update(state.win, state.footer, footer_items(state))
 
   local active_label = "[" .. views[state.view].label .. "]"
   local start_col, end_col = lines[1]:find(active_label, 1, true)
@@ -494,14 +602,23 @@ local function draw(state, keep_selection)
     end_col = hint_start + 8,
     hl_group = "Comment",
   })
-  if view ~= "help" then
+  if view == "apps" or view == "settings" then
     vim.api.nvim_buf_set_extmark(state.buf, highlight_namespace, 2, 0, {
       end_col = #lines[3],
       hl_group = { "DiagnosticOk", "Bold" },
     })
+  elseif view == "golex" then
+    for _, line_number in ipairs({ 2, 4, 6 }) do
+      if lines[line_number] and lines[line_number] ~= "" then
+        vim.api.nvim_buf_set_extmark(state.buf, highlight_namespace, line_number - 1, 0, {
+          end_col = #lines[line_number],
+          hl_group = line_number == 4 and "DiagnosticInfo" or { "DiagnosticOk", "Bold" },
+        })
+      end
+    end
   else
     for line_number, line in ipairs(lines) do
-      if line == "Keys" or line == "Apps" or line == "About" then
+      if line == "Keys" or line == "Golex keys" or line == "Apps" or line == "About" then
         vim.api.nvim_buf_set_extmark(state.buf, highlight_namespace, line_number - 1, 0, {
           end_col = #line,
           hl_group = { "DiagnosticOk", "Bold" },
@@ -529,6 +646,42 @@ local function draw(state, keep_selection)
     pcall(vim.api.nvim_win_set_cursor, state.win, { 1, 0 })
     highlight_selection(state)
   end
+
+  if state.detail_refresh then
+    state.detail_refresh()
+  end
+  if
+    view == "apps"
+    and state.awaiting_pid
+    and state.pid_refresh_remaining > 0
+    and not state.pid_refresh_scheduled
+  then
+    state.pid_refresh_scheduled = true
+    state.pid_refresh_remaining = state.pid_refresh_remaining - 1
+    vim.defer_fn(function()
+      state.pid_refresh_scheduled = nil
+      if state.win and vim.api.nvim_win_is_valid(state.win) and active_view(state) == "apps" then
+        draw(state, true)
+      end
+    end, 500)
+  end
+end
+
+local function golex_api(state)
+  return {
+    draw = function(keep_selection)
+      draw(state, keep_selection)
+    end,
+    refresh = function()
+      draw(state, true)
+    end,
+    close = function()
+      close(state)
+    end,
+    select = function(line)
+      select_line(state, line)
+    end,
+  }
 end
 
 local function is_open(state)
@@ -582,6 +735,9 @@ local function refresh_until(state, done, remaining)
 end
 
 local function move_view(state, direction)
+  if active_view(state) == "golex" then
+    rgolem_view.capture(state)
+  end
   state.view = state.view + direction
   if state.view > #views then
     state.view = 1
@@ -595,6 +751,7 @@ local function close_detail(state)
   wipe_float(state.detail_win, state.detail_buf)
   state.detail_win = nil
   state.detail_buf = nil
+  state.detail_refresh = nil
 
   if is_open(state) then
     vim.api.nvim_set_current_win(state.win)
@@ -611,11 +768,13 @@ local function detail_lines(row)
   end
 
   local provenance = definition and "tracked" or "untracked"
-  local lifecycle = definition and "restart uses the Tapyr app definition"
+  local lifecycle = definition and "restart uses the Shiny app definition"
     or "restart reuses the discovered process command"
 
   return {
     text.column("state", 12) .. row.state,
+    text.column("backend", 12)
+      .. (definition and definition.backend or session and session.backend or "-"),
     text.column("app", 12) .. row.name,
     text.column("launch", 12) .. (session and session.launch or "-"),
     text.column("project", 12) .. (row.root ~= "" and row.root or "-"),
@@ -631,13 +790,14 @@ end
 
 local function open_app_details(state, row)
   local lines = detail_lines(row)
+  local key = row_key(row)
   local width = math.min(math.max(70, math.floor(vim.o.columns * 0.68)), vim.o.columns - 4)
   local height = math.min(#lines + 2, vim.o.lines - 4)
   local buf = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.api.nvim_set_option_value("modifiable", false, { buf = buf })
   vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = buf })
-  vim.api.nvim_set_option_value("filetype", "tapyr", { buf = buf })
+  vim.api.nvim_set_option_value("filetype", "shiny", { buf = buf })
 
   local win = vim.api.nvim_open_win(buf, true, {
     relative = "editor",
@@ -647,29 +807,59 @@ local function open_app_details(state, row)
     col = math.max(math.floor((vim.o.columns - width) / 2), 0),
     style = "minimal",
     border = "single",
-    title = " Tapyr app ",
+    title = " Shiny app ",
     title_pos = "center",
+    footer = {
+      { " " },
+      { "[r]", "DiagnosticOk" },
+      { " refresh  " },
+      { "[q]", "DiagnosticOk" },
+      { " close " },
+    },
+    footer_pos = "center",
   })
   vim.api.nvim_set_option_value("wrap", true, { win = win })
   state.detail_buf = buf
   state.detail_win = win
+  state.detail_refresh = function()
+    local line = state.line_by_key[key]
+    local item = line and state.items_by_line[line]
+    if not item or not item.row then
+      messages.show("App is no longer available", vim.log.levels.WARN)
+      close_detail(state)
+      return
+    end
+
+    vim.api.nvim_set_option_value("modifiable", true, { buf = state.detail_buf })
+    vim.api.nvim_buf_set_lines(state.detail_buf, 0, -1, false, detail_lines(item.row))
+    vim.api.nvim_set_option_value("modifiable", false, { buf = state.detail_buf })
+  end
+
+  vim.keymap.set("n", "r", function()
+    state.pid_refresh_remaining = 60
+    draw(state, true)
+  end, {
+    buffer = buf,
+    desc = "Shiny: refresh app details",
+    silent = true,
+  })
 
   for _, lhs in ipairs({ "q", "<Esc>" }) do
     vim.keymap.set("n", lhs, function()
       close_detail(state)
     end, {
       buffer = buf,
-      desc = "Tapyr: close app details",
+      desc = "Shiny: close app details",
       silent = true,
     })
   end
 end
 
 local function open_settings_file(state, mapping)
-  local path = require("tapyr").config.settings_path
+  local path = require("shiny").config.settings_path
   path = type(path) == "string" and vim.fn.expand(path) or nil
   if not path or vim.fn.filereadable(path) ~= 1 then
-    messages.show("Tapyr settings file is not readable", vim.log.levels.WARN)
+    messages.show("Shiny settings file is not readable", vim.log.levels.WARN)
     return
   end
 
@@ -696,7 +886,9 @@ local function open_selected(state)
     return
   end
 
-  if item.kind == "app" then
+  if vim.startswith(item.kind, "golex_") then
+    rgolem_view.open_selected(state, item, state.golex_api)
+  elseif item.kind == "app" then
     open_app_details(state, item.row)
   elseif item.kind == "setting" then
     open_settings_file(state, item.mapping)
@@ -714,9 +906,10 @@ local function map(state, lhs, callback, desc)
 end
 
 ---@param root string
----@param current_app? TapyrAppDefinition
+---@param current_app? ShinyAppDefinition
+---@param initial_view? string
 ---@return table
-function panel.open(root, current_app)
+function panel.open(root, current_app, initial_view)
   local editor_w = vim.o.columns
   local editor_h = vim.o.lines
   local max_width = math.max(editor_w - 4, 1)
@@ -734,10 +927,17 @@ function panel.open(root, current_app)
     current_app = current_app,
     buf = buf,
     view = 1,
+    pid_refresh_remaining = 60,
   }
+  for index, view in ipairs(views) do
+    if view.key == initial_view then
+      state.view = index
+      break
+    end
+  end
 
   vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = buf })
-  vim.api.nvim_set_option_value("filetype", "tapyr", { buf = buf })
+  vim.api.nvim_set_option_value("filetype", "shiny", { buf = buf })
 
   local win = vim.api.nvim_open_win(buf, true, {
     relative = "editor",
@@ -749,10 +949,9 @@ function panel.open(root, current_app)
     border = "single",
     title = title(root),
     title_pos = "center",
-    footer = footer(),
-    footer_pos = "center",
   })
   state.win = win
+  state.golex_api = golex_api(state)
 
   vim.api.nvim_set_option_value("cursorline", false, { win = win })
   vim.api.nvim_set_option_value("wrap", false, { win = win })
@@ -767,44 +966,52 @@ function panel.open(root, current_app)
 
   map(state, actions.views.keys[1], function()
     move_view(state, 1)
-  end, "Tapyr: next view")
+  end, "Shiny: next view")
   map(state, actions.views.keys[2], function()
     move_view(state, -1)
-  end, "Tapyr: previous view")
+  end, "Shiny: previous view")
   map(state, actions.info.keys[1], function()
     open_selected(state)
-  end, "Tapyr: open selected item")
+  end, "Shiny: open selected item")
   map(state, actions.new.keys[1], function()
-    require("tapyr.create").prompt(state.root, function()
-      close(state)
-    end)
-  end, "Tapyr: create app")
+    if active_view(state) == "apps" then
+      require("shiny.create").prompt(state.root, function()
+        close(state)
+      end)
+    elseif active_view(state) == "golex" then
+      rgolem_view.edit_input(state, state.golex_api)
+    end
+  end, "Shiny: create in current view")
   map(state, actions.move.keys[1], function()
     move_selection(state, 1)
-  end, "Tapyr: next item")
+  end, "Shiny: next item")
   map(state, actions.move.keys[2], function()
     move_selection(state, 1)
-  end, "Tapyr: next item")
+  end, "Shiny: next item")
   map(state, actions.move.keys[3], function()
     move_selection(state, -1)
-  end, "Tapyr: previous item")
+  end, "Shiny: previous item")
   map(state, actions.move.keys[4], function()
     move_selection(state, -1)
-  end, "Tapyr: previous item")
+  end, "Shiny: previous item")
   map(state, actions.move.keys[5], function()
     select_line(state, state.selectable_lines[1])
-  end, "Tapyr: first item")
+  end, "Shiny: first item")
   map(state, actions.move.keys[6], function()
     select_line(state, state.selectable_lines[#state.selectable_lines])
-  end, "Tapyr: last item")
+  end, "Shiny: last item")
   map(state, actions.refresh.keys[1], function()
-    draw(state, true)
-  end, "Tapyr: refresh")
+    if active_view(state) == "apps" then
+      state.pid_refresh_remaining = 60
+      draw(state, true)
+    end
+  end, "Shiny: refresh")
   map(state, actions.restart.keys[1], function()
-    local selected = selected_row(state)
+    local selected = selected_app(state)
     if not selected then
       return
     end
+    state.pid_refresh_remaining = 60
     local previous = selected.session
     apps.restart(selected, function()
       refresh_until(state, function(rows)
@@ -815,9 +1022,9 @@ function panel.open(root, current_app)
         return previous and not has_session(rows, previous) and has_replacement(rows, previous)
       end, 12)
     end)
-  end, "Tapyr: restart selected app")
+  end, "Shiny: restart selected app")
   map(state, actions.stop.keys[1], function()
-    local selected = selected_row(state)
+    local selected = selected_app(state)
     local session = selected and selected.session
     if not session then
       if selected then
@@ -830,21 +1037,81 @@ function panel.open(root, current_app)
         return not has_session(rows, session)
       end, 12)
     end
-  end, "Tapyr: stop selected app")
+  end, "Shiny: stop selected app")
   map(state, actions.browser.keys[1], function()
-    local selected = selected_row(state)
+    local selected = selected_app(state)
     if selected and selected.session then
       apps.open_in_browser(selected.session.url)
     elseif selected then
       messages.show(selected.name .. " is not running", vim.log.levels.WARN)
     end
-  end, "Tapyr: open selected app in browser")
+  end, "Shiny: open selected app in browser")
+  map(state, "d", function()
+    if active_view(state) == "golex" then
+      rgolem_view.delete_selected(state, current_item(state), state.golex_api)
+    end
+  end, "Shiny: delete selected Golex item")
+  map(state, "S", function()
+    if active_view(state) == "golex" then
+      rgolem_view.toggle_shelves(state, state.golex_api)
+    end
+  end, "Shiny: switch Golex view")
+  map(state, "n", function()
+    if active_view(state) == "golex" then
+      rgolem_view.next(state, state.golex_api)
+    end
+  end, "Shiny: create next Golex app")
+  for _, key in ipairs({ "i", "a", "I", "A", "o", "O" }) do
+    map(state, key, function()
+      if active_view(state) == "golex" then
+        rgolem_view.edit_input(state, state.golex_api)
+      end
+    end, "Shiny: edit Golex input")
+  end
+  vim.api.nvim_create_autocmd("InsertLeave", {
+    buffer = state.buf,
+    callback = function()
+      if active_view(state) == "golex" then
+        rgolem_view.capture(state)
+        vim.api.nvim_set_option_value("modifiable", false, { buf = state.buf })
+      end
+    end,
+  })
+  vim.api.nvim_create_autocmd("CursorMovedI", {
+    buffer = state.buf,
+    callback = function()
+      if active_view(state) ~= "golex" then
+        return
+      end
+      local line = vim.api.nvim_win_get_cursor(state.win)[1]
+      if state.items_by_line[line] and state.items_by_line[line].kind == "golex_input" then
+        return
+      end
+      for input_line, item in pairs(state.items_by_line) do
+        if item.kind == "golex_input" then
+          local input = vim.api.nvim_buf_get_lines(state.buf, input_line - 1, input_line, false)[1]
+          vim.api.nvim_win_set_cursor(state.win, { input_line, #input })
+          return
+        end
+      end
+    end,
+  })
+  vim.keymap.set("i", "<CR>", function()
+    vim.cmd.stopinsert()
+    if active_view(state) == "golex" then
+      open_selected(state)
+    end
+  end, {
+    buffer = state.buf,
+    desc = "Shiny: submit Golex input",
+    silent = true,
+  })
   map(state, actions.close.keys[1], function()
     close(state)
-  end, "Tapyr: close")
+  end, "Shiny: close")
   map(state, actions.close.keys[2], function()
     close(state)
-  end, "Tapyr: close")
+  end, "Shiny: close")
 
   return state
 end

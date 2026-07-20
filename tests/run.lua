@@ -1,8 +1,11 @@
-dofile("tests/tapyr.lua")
+dofile("tests/shiny.lua")
 dofile("tests/create.lua")
 dofile("tests/registry.lua")
+dofile("tests/backend.lua")
 dofile("tests/apps.lua")
 dofile("tests/tasks.lua")
+dofile("tests/golex.lua")
+dofile("tests/golex_ui.lua")
 dofile("tests/health.lua")
 
-print("tapyr tests passed")
+print("shiny tests passed")

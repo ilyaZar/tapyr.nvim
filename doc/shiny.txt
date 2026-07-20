@@ -1,0 +1,238 @@
+*shiny.txt*             Shiny for Python and Golem tools for Neovim
+
+==============================================================================
+CONTENTS                                                      *shiny-contents*
+
+1. Introduction                                             |shiny-introduction|
+2. Requirements                                             |shiny-requirements|
+3. Commands                                                       |shiny-usage|
+4. Configuration                                         |shiny-configuration|
+5. Panel                                                         |shiny-panel|
+6. Lifecycle                                                 |shiny-lifecycle|
+7. Golex                                                         |shiny-golex|
+8. Registries                                                |shiny-registries|
+9. Health                                                       |shiny-health|
+
+==============================================================================
+1. Introduction                                            *shiny-introduction*
+
+Shiny supports Shiny for Python projects and golem-based R Shiny packages. It
+detects either backend, starts apps and tests through overseer.nvim, assigns
+managed ports, and presents one lifecycle panel.
+
+The panel also contains Golex, a manager for disposable golem scratch apps.
+Ordinary R Shiny projects that are not golem packages are not detected.
+
+==============================================================================
+2. Requirements                                            *shiny-requirements*
+
+Shared:
+
+- Neovim 0.11 or newer
+- overseer.nvim
+
+Python:
+
+- shiny and pytest in an ancestor .venv/bin or Neovim's PATH
+- optionally uv and an ancestor uv.lock for first-run preparation
+- optionally Linux /proc and ss for external-process discovery
+
+Golem and Golex:
+
+- Rscript
+- the R packages golem, pkgload, shiny, and testthat
+- optionally R.nvim for document-and-reload and run-dev actions
+
+Python users do not need R tooling.
+
+==============================================================================
+3. Commands                                                       *shiny-usage*
+
+                                                                *:Shiny*
+:Shiny                  Open the Apps tab.
+:Shiny panel VIEW       Open apps, golex, settings, or help.
+:Shiny golex            Open the native Golex tab.
+:Shiny golex NAME       Create a named Golex app.
+:Shiny golex NUMBER     Create golexNN.
+:Shiny golex next       Create the next numbered Golex app.
+:Shiny action
+  document-reload       Send golem::document_and_reload() through R.nvim.
+:Shiny action run-dev   Send golem::run_dev() through R.nvim.
+
+The run-dev action executes the project-owned development script. It is not a
+managed lifecycle restart.
+
+Detected project buffers receive:
+
+CTRL-B                  Run the app.
+CTRL-SHIFT-B            Restart the managed app task.
+CTRL-T                  Run backend tests.
+<Leader>tm              Open the panel.
+CTRL-G                  Document and reload a Golem package through R.nvim.
+CTRL-SHIFT-G            Run the Golem development script through R.nvim.
+
+The two Golem mappings exist only in detected golem packages.
+
+==============================================================================
+4. Configuration                                         *shiny-configuration*
+
+Defaults:
+>
+  require("shiny").setup({
+    settings_path = nil,
+    template_path_new_app =
+      "https://github.com/Appsilon/tapyr-template.git",
+    mappings = {
+      run = "<C-b>",
+      restart = "<C-S-b>",
+      test = "<C-t>",
+      panel = "<leader>tm",
+      document_reload = "<C-g>",
+      run_dev = "<C-S-g>",
+    },
+    golex = {
+      dir = "/tmp/golskels",
+      shelves_path =
+        vim.fs.joinpath(vim.fn.stdpath("data"), "shiny", "golex.json"),
+      open_cmd = { "nvim" },
+    },
+  })
+<
+Set a mapping to false to disable it.
+
+settings_path may identify the readable Lua file containing the mappings.
+Selecting a Settings row opens that file. Shiny never creates or overwrites
+the settings file.
+
+golex.open_cmd is an argv array. A bare nvim command uses
+xdg-terminal-exec, Ghostty, or Alacritty on Linux. Code, Positron, and RStudio
+receive the selected project path directly. RStudio prefers an .Rproj, then
+DESCRIPTION, then dev/01_start.R.
+
+Chain the optional R.nvim hook without replacing another companion:
+>
+  opts = function(_, opts)
+    require("shiny").setup_rnvim(opts)
+  end
+<
+
+==============================================================================
+5. Panel                                                         *shiny-panel*
+
+Tab / Shift-Tab         Cycle Apps, Golex, Settings, and Help.
+j / k / Down / Up       Move between selectable rows.
+gg / G                  Select the first or last row.
+q / Esc                 Close the panel.
+
+Each tab has its own footer. All footers use bracketed key labels.
+
+Apps:
+
+Enter                   Open backend-aware app details.
+R                       Start or restart the selected app.
+X                       Stop the selected running app.
+b                       Open the selected app in the browser.
+r                       Refresh app state.
+N                       Create a Python app from the configured template.
+
+Golex:
+
+Enter                   Create input or open the selected item.
+d                       Delete the selected app or shelf after confirmation.
+S                       Switch between projects and shelves.
+n                       Create the next numbered Golex app.
+N / i                   Edit the current Golex input row.
+
+Settings:
+
+Enter                   Open the selected mapping in settings_path.
+
+Help:
+
+Enter                   Open the selected project link.
+
+Actions not shown for the current tab are inactive.
+
+==============================================================================
+6. Lifecycle                                                 *shiny-lifecycle*
+
+Python runs:
+>
+  shiny run --reload --port PORT app.py
+<
+Python tests run pytest. If shiny is missing and an ancestor uv.lock exists,
+one shared uv sync task prepares the project before retrying.
+
+Golem loads the package with pkgload::load_all(), creates the app with
+run_app(), and passes it to shiny::runApp() with SHINY_PORT. This predictable
+managed command bypasses project-owned dev/run_dev.R behavior. Golem tests run:
+>
+  Rscript -e 'testthat::test_local(".")'
+<
+
+Managed apps have one Overseer task per backend-qualified ID. Their task
+metadata is authoritative for backend, port, and state. Shiny assigns ports
+from 8000 through 8199 unless a registry entry reserves one.
+
+Linux ss and /proc discovery supplements managed state for external Shiny for
+Python commands. It is optional for managed apps.
+
+==============================================================================
+7. Golex                                                         *shiny-golex*
+
+The Golex tab keeps an editable row above selectable scratch projects. Type an
+R package name or number and press Enter. Numeric input becomes golexNN.
+
+Enter on a project opens the Open/Recreate dialog. d asks before recursively
+deleting it. S opens shelves, where the editable row adds a directory and
+Enter switches the active shelf.
+
+Deleting a non-default shelf recursively deletes its directory and every
+project below it. The configured default shelf cannot be deleted. Golex apps
+and shelves are intentionally disposable.
+
+Destructive prompts name the complete recursive effect. Canonical path checks
+bound deletion to the selected direct child or registered shelf.
+
+Creation passes the destination as an Rscript argument and never interpolates
+it into R source.
+
+==============================================================================
+8. Registries                                                *shiny-registries*
+
+Shiny reads stdpath("config")/shiny.json and the nearest .shiny.json:
+>
+  {
+    "version": 1,
+    "apps": [
+      {
+        "name": "Python dashboard",
+        "path": "apps/dashboard",
+        "port": 8012
+      },
+      {
+        "name": "Golem dashboard",
+        "path": "packages/dashboard",
+        "run": ["Rscript", "dev/run_dev.R"],
+        "test": ["Rscript", "tests/testthat.R"]
+      }
+    ]
+  }
+<
+Paths may be absolute or registry-relative. The target directory determines
+the backend. Workspace entries appear before matching global entries.
+
+run and test overrides must be non-empty argv arrays. Run overrides receive
+SHINY_PORT and must honor it for accurate port and browser tracking.
+
+==============================================================================
+9. Health                                                       *shiny-health*
+
+Run:
+>
+  :checkhealth shiny
+<
+The health check separates shared, Python, Golem, Golex, and optional R.nvim
+capabilities. Missing R tooling does not fail Python support.
+
+vim:tw=78:ts=8:noet:ft=help:norl:

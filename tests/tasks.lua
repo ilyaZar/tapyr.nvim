@@ -1,5 +1,6 @@
-local messages = require("tapyr.messages")
-local tasks = require("tapyr.tasks")
+local messages = require("shiny.messages")
+local python = require("shiny.backends.python")
+local tasks = require("shiny.tasks")
 
 local original_constants = package.loaded["overseer.constants"]
 local original_executable = vim.fn.executable
@@ -25,6 +26,7 @@ local function new_task(spec)
     id = #created + 1,
     restarts = 0,
     starts = 0,
+    stops = 0,
     status = status.PENDING,
     subscribers = {},
     spec = spec,
@@ -43,6 +45,12 @@ local function new_task(spec)
   function task:start()
     self.starts = self.starts + 1
     self.status = status.RUNNING
+    return true
+  end
+
+  function task:stop()
+    self.stops = self.stops + 1
+    self.status = status.SUCCESS
     return true
   end
 
@@ -76,6 +84,7 @@ package.loaded["overseer.constants"] = { STATUS = status }
 local project_executables = {}
 local system_executables = {
   pytest = "/usr/bin/pytest",
+  Rscript = "/usr/bin/Rscript",
   shiny = "/usr/bin/shiny",
   uv = "/usr/bin/uv",
 }
@@ -97,17 +106,20 @@ end
 
 local function app(root, name, port)
   return {
-    id = root .. "/app.py",
+    id = "python:" .. root .. "/app.py",
+    backend = "python",
     name = name or vim.fs.basename(root),
     root = root,
     entrypoint = root .. "/app.py",
     port = port,
+    commands = {},
   }
 end
 
 local project_app = app("/tmp/project/apps/demo", "demo")
+local project_spec = assert(python.task(project_app, "run", { port = 8123 }))
 assert(
-  vim.deep_equal(tasks.resolve("run", project_app, 8123), {
+  vim.deep_equal(project_spec.cmd, {
     "/usr/bin/shiny",
     "run",
     "--reload",
@@ -120,7 +132,7 @@ assert(
 
 local project_shiny = "/tmp/project/.venv/bin/shiny"
 project_executables[project_shiny] = true
-local project_command = tasks.resolve("run", project_app, 8123)
+local project_command = assert(python.task(project_app, "run", { port = 8123 })).cmd
 assert(project_command[1] == project_shiny, "parent project Shiny was not preferred")
 assert(project_command[4] == "--reload-excludes", "project environment was not excluded")
 assert(
@@ -136,9 +148,46 @@ assert(run_task.starts == 1, "pending task was not started")
 assert(opened[#opened].enter == false, "run task took focus")
 assert(opened[#opened].focus_task_id == run_task.id, "run task was not selected")
 assert(opened[#opened].direction == nil, "run task overrode the Overseer direction")
-assert(run_task.spec.name == "Tapyr: run", "run task name did not identify the app")
+assert(run_task.spec.name == "Shiny: run", "run task name did not identify the app")
 assert(run_task.spec.cmd[5] == "49151", "configured app port was not used")
-assert(run_task.spec.metadata.tapyr_app == run_app.id, "task lost its app identity")
+assert(run_task.spec.metadata.shiny_app == run_app.id, "task lost its app identity")
+assert(run_task.spec.metadata.shiny_backend == "python", "task lost its backend identity")
+
+local golem_app = {
+  id = "golem:/tmp/golem",
+  backend = "golem",
+  name = "golem",
+  root = "/tmp/golem",
+  entrypoint = "/tmp/golem",
+  port = 49150,
+  commands = {},
+}
+tasks.run(golem_app)
+local golem_task = created[#created]
+assert(golem_task.spec.env.SHINY_PORT == "49150", "Golem task lost SHINY_PORT")
+assert(golem_task.spec.metadata.shiny_backend == "golem", "Golem task metadata changed")
+assert(
+  golem_task.spec.cmd[3]:find("shiny::runApp", 1, true),
+  "Golem task did not use the managed launcher"
+)
+local managed_session
+for _, session in ipairs(tasks.sessions()) do
+  if session.id == golem_app.id then
+    managed_session = session
+  end
+end
+assert(managed_session and managed_session.managed, "managed Golem session was not exposed")
+assert(managed_session.url == "http://127.0.0.1:49150", "managed Golem URL changed")
+local opened_before_managed_restart = #opened
+assert(tasks.restart_managed(managed_session.id, false), "managed session could not restart")
+assert(golem_task.restarts == 1, "managed session restart bypassed Overseer")
+assert(#opened == opened_before_managed_restart, "managed panel restart opened the task list")
+assert(tasks.stop_managed(golem_app.id), "managed Golem task did not stop")
+assert(golem_task.stops == 1, "managed Golem stop bypassed Overseer")
+
+tasks.test(golem_app)
+local golem_test = created[#created]
+assert(golem_test.spec.cmd[3] == 'testthat::test_local(".")', "Golem test task changed")
 
 run_task.status = "success"
 tasks.run(run_app)
@@ -181,7 +230,7 @@ assert(opened[#opened].direction == nil, "test task overrode the Overseer direct
 assert(test_task.spec.cwd == "/tmp/test", "test task used the wrong root")
 assert(test_task.spec.cmd[1] == "/usr/bin/pytest", "test task used the wrong command")
 assert(test_task.spec.env.PYTHONDONTWRITEBYTECODE == "1", "test task allowed bytecode writes")
-assert(test_task.spec.name == "Tapyr: test test", "test task name did not identify the app")
+assert(test_task.spec.name == "Shiny: test test", "test task name did not identify the app")
 
 local messages_seen = {}
 messages.show = function(message)
@@ -197,10 +246,10 @@ local messages_before_prepare = #messages_seen
 assert(tasks.run(uv_app), "missing Shiny did not start environment preparation")
 local prepare_task = created[#created]
 assert(#created == created_before_prepare + 1, "environment preparation created extra tasks")
-assert(prepare_task.spec.name == "Tapyr: prepare uv-project", "preparation task name changed")
+assert(prepare_task.spec.name == "Shiny: prepare uv-project", "preparation task name changed")
 assert(vim.deep_equal(prepare_task.spec.cmd, { "/usr/bin/uv", "sync" }), "uv sync command changed")
 assert(prepare_task.spec.cwd == uv_root, "uv sync used the wrong project root")
-assert(prepare_task.spec.metadata.tapyr_prepare == uv_root, "uv project identity was lost")
+assert(prepare_task.spec.metadata.shiny_prepare == uv_root, "uv project identity was lost")
 assert(opened[#opened].enter == false, "environment preparation took focus")
 assert(opened[#opened].focus_task_id == prepare_task.id, "preparation task was not selected")
 assert(#messages_seen == messages_before_prepare + 1, "preparation notification was duplicated")

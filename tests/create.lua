@@ -1,5 +1,5 @@
-local create = require("tapyr.create")
-local messages = require("tapyr.messages")
+local create = require("shiny.create")
+local messages = require("shiny.messages")
 
 local original_filereadable = vim.fn.filereadable
 local original_fs_stat = vim.uv.fs_stat

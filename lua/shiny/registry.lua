@@ -1,6 +1,7 @@
 local registry = {}
 
-local project = require("tapyr.project")
+local backend = require("shiny.backend")
+local project = require("shiny.project")
 
 local function absolute_path(path, base)
   path = vim.fn.expand(path)
@@ -53,18 +54,34 @@ local function manifest_apps(path)
     then
       return {}, label .. " has an invalid port"
     end
+    for _, action in ipairs({ "run", "test" }) do
+      local command = entry[action]
+      if command ~= nil then
+        if type(command) ~= "table" or not vim.islist(command) or vim.tbl_isempty(command) then
+          return {}, label .. " has an invalid " .. action .. " command"
+        end
+        for _, argument in ipairs(command) do
+          if type(argument) ~= "string" or argument == "" then
+            return {}, label .. " has an invalid " .. action .. " command"
+          end
+        end
+      end
+    end
 
     local root = absolute_path(entry.path, base)
-    local app = project.new(root, {
-      name = entry.name,
-      port = entry.port,
-    })
-    if vim.fn.isdirectory(app.root) ~= 1 then
-      return {}, app.root .. " does not exist"
+    if vim.fn.isdirectory(root) ~= 1 then
+      return {}, root .. " does not exist"
     end
-    if not project.is_app(app.entrypoint) then
-      return {}, app.entrypoint .. " is not a Shiny app"
+    local app = backend.detect(root)
+    if not app or app.root ~= root then
+      return {}, root .. " is not a supported Shiny project"
     end
+    app.name = entry.name or app.name
+    app.port = entry.port
+    app.commands = {
+      run = entry.run and vim.deepcopy(entry.run) or nil,
+      test = entry.test and vim.deepcopy(entry.test) or nil,
+    }
     definitions[#definitions + 1] = app
   end
 
@@ -72,7 +89,7 @@ local function manifest_apps(path)
 end
 
 local function workspace_manifest(root)
-  return project.find_file(root, ".tapyr.json")
+  return project.find_file(root, ".shiny.json")
 end
 
 ---@param root string
@@ -89,11 +106,11 @@ local function add(definitions, seen, app)
 end
 
 ---@param root string
----@param current_app? TapyrAppDefinition
+---@param current_app? ShinyAppDefinition
 ---@param global_path? string
----@return TapyrAppDefinition[], string[]
+---@return ShinyAppDefinition[], string[]
 function registry.load(root, current_app, global_path)
-  global_path = global_path or vim.fs.joinpath(vim.fn.stdpath("config"), "tapyr.json")
+  global_path = global_path or vim.fs.joinpath(vim.fn.stdpath("config"), "shiny.json")
 
   local local_manifest = workspace_manifest(root)
   if local_manifest then
@@ -107,9 +124,7 @@ function registry.load(root, current_app, global_path)
   if local_manifest then
     paths[#paths + 1] = local_manifest
   end
-  if global_path then
-    paths[#paths + 1] = global_path
-  end
+  paths[#paths + 1] = global_path
 
   for _, path in ipairs(paths) do
     local manifest_definitions, note = manifest_apps(path)
@@ -130,9 +145,9 @@ function registry.load(root, current_app, global_path)
   return definitions, notes
 end
 
----@param app TapyrAppDefinition
+---@param app ShinyAppDefinition
 ---@param global_path? string
----@return TapyrAppDefinition
+---@return ShinyAppDefinition
 function registry.resolve(app, global_path)
   local definitions = registry.load(app.root, app, global_path)
   for _, definition in ipairs(definitions) do

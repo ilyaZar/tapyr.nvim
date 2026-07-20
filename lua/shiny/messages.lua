@@ -4,7 +4,7 @@ local messages = {}
 ---@param level? integer
 function messages.show(message, level)
   vim.notify(message, level or vim.log.levels.INFO, {
-    title = "Tapyr",
+    title = "Shiny",
   })
 end
 

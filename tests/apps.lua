@@ -1,13 +1,17 @@
-local apps = require("tapyr.apps")
-local messages = require("tapyr.messages")
-local tasks = require("tapyr.tasks")
+local apps = require("shiny.apps")
+local messages = require("shiny.messages")
+local tasks = require("shiny.tasks")
 
 local original_defer_fn = vim.defer_fn
+local original_find_external = apps.find_external
 local original_inspect = apps.inspect
 local original_jobstart = vim.fn.jobstart
 local original_open = vim.ui.open
 local original_show = messages.show
 local original_restart = tasks.restart
+local original_restart_managed = tasks.restart_managed
+local original_sessions = tasks.sessions
+local original_stop_managed = tasks.stop_managed
 local original_stop = apps.stop
 local original_system = vim.system
 
@@ -29,6 +33,22 @@ vim.system = function(command)
 end
 
 assert(not apps.stop(nil), "missing PID was stopped")
+
+local managed_stopped
+tasks.stop_managed = function(id)
+  managed_stopped = id
+  return true
+end
+assert(
+  apps.stop({
+    id = "golem:/tmp/managed",
+    managed = true,
+    name = "managed",
+  }),
+  "managed app was not stopped"
+)
+assert(managed_stopped == "golem:/tmp/managed", "managed stop bypassed the task owner")
+assert(messages_seen[#messages_seen] == "Stopped managed", "managed stop message changed")
 
 local current_process = {
   pid = 101,
@@ -122,10 +142,12 @@ tasks.restart = function(root, show_task_list, on_started)
 end
 
 local current_definition = {
-  id = "/tmp/current/app.py",
+  id = "python:/tmp/current/app.py",
+  backend = "python",
   name = "current",
   root = "/tmp/current",
   entrypoint = "/tmp/current/app.py",
+  commands = {},
 }
 local tracked_started = false
 apps.restart({
@@ -139,6 +161,26 @@ assert(started.show_task_list == false, "panel restart opened the Overseer task 
 assert(not tracked_started, "tracked restart callback ran before the task started")
 started.on_started()
 assert(tracked_started, "tracked restart callback was not forwarded")
+
+local managed_started = false
+tasks.restart_managed = function(id, show_task_list, on_started)
+  assert(id == "golem:/tmp/managed", "managed restart lost its app identity")
+  assert(show_task_list == false, "managed panel restart opened the task list")
+  on_started()
+  return true
+end
+assert(
+  apps.restart({
+    session = {
+      id = "golem:/tmp/managed",
+      managed = true,
+    },
+  }, function()
+    managed_started = true
+  end),
+  "managed untracked app was not restarted"
+)
+assert(managed_started, "managed restart callback was not forwarded")
 
 local external_started = false
 apps.restart({
@@ -204,24 +246,76 @@ assert(
   "restart error was not shown"
 )
 
+local managed_session = {
+  id = current_definition.id,
+  backend = "python",
+  name = "current",
+  cwd = current_definition.root,
+  port = 8000,
+  start_time = "overseer:1:1",
+  launch = "shiny run --reload --port <auto> app.py",
+  managed = true,
+}
+tasks.sessions = function()
+  return { managed_session }
+end
+apps.find_external = function()
+  return {
+    {
+      id = current_definition.id,
+      backend = "python",
+      pid = 201,
+      argv = { "shiny", "run", "--reload", "--port", "8000", "app.py" },
+      cwd = current_definition.root,
+      port = 8000,
+      start_time = "2001",
+      launch = "shiny run --reload --port 8000 app.py",
+    },
+    {
+      id = current_definition.id,
+      backend = "python",
+      pid = 202,
+      argv = { "shiny", "run", "--port", "8001", "app.py" },
+      cwd = current_definition.root,
+      port = 8001,
+      start_time = "2002",
+      launch = "shiny run --port 8001 app.py",
+    },
+  }
+end
+local found = apps.find()
+assert(#found == 2, "managed reconciliation discarded another app instance")
+assert(found[1] == managed_session, "managed session ownership changed")
+assert(found[1].pid == 201, "managed session did not receive its process PID")
+assert(
+  found[1].launch == "shiny run --reload --port 8000 app.py",
+  "managed session did not receive the concrete process command"
+)
+assert(found[1].start_time == "overseer:1:1", "process discovery replaced managed identity")
+assert(found[2].pid == 202, "distinct external instance was discarded")
+
 local definitions = {
   current_definition,
   {
-    id = "/tmp/stopped/app.py",
+    id = "python:/tmp/stopped/app.py",
+    backend = "python",
     name = "stopped",
     root = "/tmp/stopped",
     entrypoint = "/tmp/stopped/app.py",
+    commands = {},
   },
 }
 local running = {
   {
     id = current_definition.id,
+    backend = "python",
     name = "current",
     cwd = current_definition.root,
     port = 8000,
   },
   {
-    id = "/tmp/external/app.py",
+    id = "python:/tmp/external/app.py",
+    backend = "python",
     name = "external",
     cwd = "/tmp/external",
     port = 8001,
@@ -242,9 +336,13 @@ apps.open_in_browser("http://127.0.0.1:8000")
 assert(opened_url == "http://127.0.0.1:8000", "vim.ui.open was not used")
 
 apps.stop = original_stop
+apps.find_external = original_find_external
 apps.inspect = original_inspect
 messages.show = original_show
 tasks.restart = original_restart
+tasks.restart_managed = original_restart_managed
+tasks.sessions = original_sessions
+tasks.stop_managed = original_stop_managed
 vim.defer_fn = original_defer_fn
 vim.fn.jobstart = original_jobstart
 vim.system = original_system

@@ -1,6 +1,6 @@
 local create = {}
 
-local messages = require("tapyr.messages")
+local messages = require("shiny.messages")
 
 local function path(value)
   return vim.fs.normalize(vim.fn.fnamemodify(vim.fn.expand(value), ":p"))
@@ -68,7 +68,7 @@ function create.prompt(root, on_confirm)
     if not destination or destination == "" then
       return
     end
-    if create.run(require("tapyr").config.template_path_new_app, destination) and on_confirm then
+    if create.run(require("shiny").config.template_path_new_app, destination) and on_confirm then
       on_confirm()
     end
   end)

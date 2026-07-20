@@ -1,4 +1,5 @@
-local registry = require("tapyr.registry")
+local backend = require("shiny.backend")
+local registry = require("shiny.registry")
 local root = vim.fn.tempname()
 local workspace = vim.fs.joinpath(root, "workspace")
 local local_app = vim.fs.joinpath(workspace, "apps", "local")
@@ -8,7 +9,7 @@ vim.fn.mkdir(global_app, "p")
 vim.fn.writefile({ "from shiny import App" }, vim.fs.joinpath(local_app, "app.py"))
 vim.fn.writefile({ "from shiny import App" }, vim.fs.joinpath(global_app, "app.py"))
 
-local global_manifest = vim.fs.joinpath(root, "tapyr.json")
+local global_manifest = vim.fs.joinpath(root, "shiny.json")
 vim.fn.writefile({
   vim.json.encode({
     version = 1,
@@ -31,7 +32,7 @@ vim.fn.writefile({
       },
     },
   }),
-}, vim.fs.joinpath(workspace, ".tapyr.json"))
+}, vim.fs.joinpath(workspace, ".shiny.json"))
 
 assert(registry.context(local_app) == workspace, "workspace context was not detected")
 local definitions, notes = registry.load(local_app, nil, global_manifest)
@@ -42,11 +43,42 @@ assert(definitions[2].name == "global app", "global app order changed")
 assert(definitions[2].port == 8123, "configured port was lost")
 assert(definitions[2].entrypoint == vim.fs.joinpath(global_app, "app.py"), "entrypoint changed")
 
-local resolved = registry.resolve(require("tapyr.project").new(global_app), global_manifest)
+local resolved = registry.resolve(assert(backend.detect(global_app)), global_manifest)
 assert(resolved.name == "global app", "registry name was not applied to a detected app")
 assert(resolved.port == 8123, "registry port was not applied to a detected app")
 
-local current = require("tapyr.project").new(vim.fs.joinpath(root, "current"))
+local golem_root = vim.fs.joinpath(root, "golem")
+vim.fn.mkdir(vim.fs.joinpath(golem_root, "inst"), "p")
+vim.fn.writefile({ "Package: registryGolem" }, vim.fs.joinpath(golem_root, "DESCRIPTION"))
+vim.fn.writefile({}, vim.fs.joinpath(golem_root, "inst", "golem-config.yml"))
+local golem_manifest = vim.fs.joinpath(root, "golem.json")
+vim.fn.writefile({
+  vim.json.encode({
+    version = 1,
+    apps = {
+      {
+        path = golem_root,
+        port = 8124,
+        run = { "Rscript", "dev/run_dev.R" },
+        test = { "Rscript", "tests/testthat.R" },
+      },
+    },
+  }),
+}, golem_manifest)
+local golem_definitions, golem_notes = registry.load(golem_root, nil, golem_manifest)
+assert(#golem_notes == 0, "valid Golem registry produced a warning")
+assert(#golem_definitions == 1, "Golem registry entry was not loaded")
+assert(golem_definitions[1].backend == "golem", "Golem registry lost its backend")
+assert(golem_definitions[1].port == 8124, "Golem registry lost its port")
+assert(
+  vim.deep_equal(golem_definitions[1].commands.run, { "Rscript", "dev/run_dev.R" }),
+  "Golem run override was not preserved"
+)
+
+local current_root = vim.fs.joinpath(root, "current")
+vim.fn.mkdir(current_root, "p")
+vim.fn.writefile({ "from shiny import App" }, vim.fs.joinpath(current_root, "app.py"))
+local current = assert(backend.detect(current_root))
 definitions = registry.load(local_app, current, global_manifest)
 assert(#definitions == 3, "current app was not included")
 assert(definitions[3].id == current.id, "current app identity changed")

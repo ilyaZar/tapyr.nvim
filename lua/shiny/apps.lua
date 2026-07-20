@@ -1,11 +1,12 @@
 local apps = {}
 
-local tasks = require("tapyr.tasks")
-local messages = require("tapyr.messages")
-local project = require("tapyr.project")
+local tasks = require("shiny.tasks")
+local messages = require("shiny.messages")
+local project = require("shiny.project")
 
----@class TapyrRunningApp
+---@class ShinyRunningApp
 ---@field port integer
+---@field backend "python"|"golem"
 ---@field pid? integer
 ---@field argv? string[]
 ---@field launch? string
@@ -15,15 +16,16 @@ local project = require("tapyr.project")
 ---@field name? string
 ---@field start_time string
 ---@field url string
+---@field managed? boolean
 
----@class TapyrAppRow
+---@class ShinyAppRow
 ---@field state "running"|"stopped"
 ---@field name string
 ---@field root string
----@field definition? TapyrAppDefinition
----@field session? TapyrRunningApp
+---@field definition? ShinyAppDefinition
+---@field session? ShinyRunningApp
 
----@class TapyrProcess
+---@class ShinyProcess
 ---@field pid integer
 ---@field argv string[]
 ---@field cwd? string
@@ -209,7 +211,7 @@ function apps.entrypoint(argv, cwd)
 end
 
 ---@param pid integer
----@return TapyrProcess?
+---@return ShinyProcess?
 function apps.inspect(pid)
   local argv = read_arguments(pid)
   if not argv then
@@ -308,8 +310,8 @@ local function find_shiny_owner(line)
   end
 end
 
----@return TapyrRunningApp[], string?
-function apps.find()
+---@return ShinyRunningApp[], string?
+function apps.find_external()
   if vim.fn.executable("ss") ~= 1 then
     return {}, "Install ss to list local apps"
   end
@@ -335,14 +337,15 @@ function apps.find()
       if process and process.start_time then
         local entrypoint = apps.entrypoint(process.argv, process.cwd)
 
-        ---@type TapyrRunningApp
+        ---@type ShinyRunningApp
         local app = {
           port = port,
+          backend = "python",
           pid = process.pid,
           argv = process.argv,
           launch = apps.launch_label(process.argv),
           cwd = process.cwd,
-          id = entrypoint,
+          id = entrypoint and "python:" .. entrypoint or nil,
           entrypoint = entrypoint,
           name = entrypoint and vim.fs.basename(vim.fs.dirname(entrypoint)) or nil,
           start_time = process.start_time,
@@ -373,9 +376,35 @@ function apps.find()
   return found_apps, nil
 end
 
----@param definitions TapyrAppDefinition[]
----@param running TapyrRunningApp[]
----@return TapyrAppRow[]
+---@return ShinyRunningApp[], string?
+function apps.find()
+  local managed = tasks.sessions()
+  local external, note = apps.find_external()
+  local found = {}
+  local reconciled = {}
+  for _, session in ipairs(managed) do
+    for index, process in ipairs(external) do
+      if session.id == process.id and session.port == process.port then
+        session.pid = process.pid
+        session.argv = process.argv
+        session.launch = process.launch or session.launch
+        reconciled[index] = true
+        break
+      end
+    end
+    found[#found + 1] = session
+  end
+  for index, session in ipairs(external) do
+    if not reconciled[index] then
+      found[#found + 1] = session
+    end
+  end
+  return found, note
+end
+
+---@param definitions ShinyAppDefinition[]
+---@param running ShinyRunningApp[]
+---@return ShinyAppRow[]
 function apps.merge(definitions, running)
   local rows = {}
   local matched = {}
@@ -413,10 +442,21 @@ function apps.merge(definitions, running)
   return rows
 end
 
----@param app? TapyrRunningApp
+---@param app? ShinyRunningApp
 ---@return boolean
 function apps.stop(app)
-  if not app or not app.pid then
+  if not app then
+    return false
+  end
+  if app.managed then
+    if not tasks.stop_managed(app.id) then
+      messages.show("Could not stop " .. (app.name or "app"), vim.log.levels.ERROR)
+      return false
+    end
+    messages.show("Stopped " .. (app.name or "app"))
+    return true
+  end
+  if not app.pid then
     return false
   end
 
@@ -442,7 +482,7 @@ function apps.stop(app)
   return true
 end
 
----@param row? TapyrAppRow
+---@param row? ShinyAppRow
 ---@param on_started? fun()
 ---@return boolean
 function apps.restart(row, on_started)
@@ -452,10 +492,10 @@ function apps.restart(row, on_started)
   end
 
   if row.definition then
-    if row.session and not apps.stop(row.session) then
+    if row.session and not row.session.managed and not apps.stop(row.session) then
       return false
     end
-    if row.session then
+    if row.session and not row.session.managed then
       vim.defer_fn(function()
         tasks.restart(row.definition, false, on_started)
       end, 250)
@@ -468,6 +508,9 @@ function apps.restart(row, on_started)
   if not app then
     messages.show("This app is not running", vim.log.levels.WARN)
     return false
+  end
+  if app.managed then
+    return tasks.restart_managed(app.id, false, on_started)
   end
   if not app.argv or vim.tbl_isempty(app.argv) then
     messages.show("Cannot determine how this app was started", vim.log.levels.WARN)
