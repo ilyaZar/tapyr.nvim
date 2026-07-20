@@ -6,6 +6,7 @@ local app_tasks = {}
 local assigned_ports = {}
 local preparations = {}
 local reserved_ports = {}
+local shiny_reload_excludes = ".*,*.py[cod],__pycache__,env,venv"
 
 local tools = {
   run = {
@@ -43,9 +44,10 @@ local function find_executable(name, app)
   local tool = tools[name]
   local directory = app.root
   while directory do
-    local candidate = vim.fs.joinpath(directory, ".venv", "bin", tool.executable)
+    local environment = vim.fs.joinpath(directory, ".venv")
+    local candidate = vim.fs.joinpath(environment, "bin", tool.executable)
     if vim.fn.executable(candidate) == 1 then
-      return candidate
+      return candidate, environment
     end
     local parent = vim.fs.dirname(directory)
     if parent == directory then
@@ -65,7 +67,7 @@ end
 ---@param port? integer
 ---@return string[]?
 function tasks.resolve(name, app, port)
-  local executable = find_executable(name, app)
+  local executable, environment = find_executable(name, app)
   if not executable then
     return nil
   end
@@ -79,14 +81,19 @@ function tasks.resolve(name, app, port)
   end
 
   local entrypoint = vim.fs.relpath(root, app.entrypoint) or app.entrypoint
-  return {
+  local command = {
     executable,
     "run",
     "--reload",
-    "--port",
-    tostring(port),
-    entrypoint,
   }
+  if environment then
+    vim.list_extend(command, {
+      "--reload-excludes",
+      shiny_reload_excludes .. "," .. environment,
+    })
+  end
+  vim.list_extend(command, { "--port", tostring(port), entrypoint })
+  return command
 end
 
 ---@param name "run"|"test"

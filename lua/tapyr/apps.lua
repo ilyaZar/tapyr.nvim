@@ -170,12 +170,18 @@ function apps.launch_label(argv)
   end
 
   local command = {}
-  for index = start_index, #argv do
+  local index = start_index
+  while index <= #argv do
     local argument = argv[index]
-    if argument:sub(1, 1) == "/" then
-      argument = vim.fs.basename(argument)
+    if argument == "--reload-excludes" then
+      index = index + 2
+    else
+      if argument:sub(1, 1) == "/" then
+        argument = vim.fs.basename(argument)
+      end
+      command[#command + 1] = argument
+      index = index + 1
     end
-    command[#command + 1] = argument
   end
   return table.concat(command, " ")
 end

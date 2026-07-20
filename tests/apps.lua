@@ -55,6 +55,8 @@ assert(apps.launch_label({
   "/tmp/project/.venv/bin/shiny",
   "run",
   "--reload",
+  "--reload-excludes",
+  ".*,*.py[cod],__pycache__,env,venv,/tmp/project/.venv",
   "/tmp/project/app.py",
 }) == "shiny run --reload app.py", "direct Shiny command label kept paths")
 assert(apps.launch_label({
