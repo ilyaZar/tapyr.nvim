@@ -2,6 +2,10 @@ local apps = require("shiny.apps")
 local create = require("shiny.rgolem.create")
 local helpers = require("tests.helpers")
 local registry = require("shiny.registry")
+local text = require("shiny.text")
+
+assert(text.shorten("ääääää", 5) == "ää...", "Unicode shelf path shortening broke")
+assert(text.column("ää", 4) == "ää  ", "Unicode column padding broke")
 
 local original_columns = vim.o.columns
 local original_lines = vim.o.lines
@@ -71,9 +75,16 @@ end
 
 local panel_width = vim.api.nvim_win_get_width(state.win)
 local path_label = "path to selected shelf: "
+local shelves_hint = "Switch to shelve selection: [S]"
 assert(vim.startswith(lines[2], path_label), "Golex shelf path label is unclear")
+assert(vim.endswith(lines[2], shelves_hint), "Golex view lacks its shelf-selection hint")
+assert(vim.fn.strdisplaywidth(lines[2]) == panel_width, "Golex shelf hint is not right aligned")
 assert(has_highlight(2, 0, "Statement"), "Golex shelf path label is not light purple")
 assert(has_highlight(2, #path_label, "DiagnosticOk"), "Golex shelf path is not green")
+assert(
+  has_highlight(2, #lines[2] - #shelves_hint, "DiagnosticError"),
+  "Golex shelf-selection hint is not red"
+)
 assert(
   footer_text():find("[Enter] open w/ external editor", 1, true),
   "Golex footer syntax changed"
@@ -103,6 +114,14 @@ assert(wrapped and #wrapped > 1, "narrow Golex footer did not wrap")
 for _, line in ipairs(wrapped) do
   assert(vim.fn.strdisplaywidth(line) <= panel_width, "wrapped Golex footer still clipped")
 end
+
+vim.api.nvim_win_set_width(state.win, 44)
+state.golex_api.draw(true)
+local compact_apps = vim.api.nvim_buf_get_lines(panel_buf, 0, -1, false)
+assert(vim.endswith(compact_apps[2], "[S] shelves"), "narrow Golex view lacks its shelf hint")
+assert(vim.fn.strdisplaywidth(compact_apps[2]) <= 44, "compact Golex shelf status clipped")
+vim.api.nvim_win_set_width(state.win, panel_width)
+state.golex_api.draw(true)
 
 local restarted = false
 apps.restart = function()

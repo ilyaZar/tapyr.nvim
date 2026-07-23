@@ -5,13 +5,21 @@ local text = {}
 ---@return string
 function text.shorten(value, width)
   value = tostring(value or "")
-  if #value <= width then
+  width = math.max(width, 0)
+  if vim.fn.strdisplaywidth(value) <= width then
     return value
   end
-  if width <= 3 then
-    return value:sub(1, width)
+  local suffix = width > 3 and "..." or ""
+  local available = width - #suffix
+  local prefix = ""
+  for length = 1, vim.fn.strchars(value) do
+    local candidate = vim.fn.strcharpart(value, 0, length)
+    if vim.fn.strdisplaywidth(candidate) > available then
+      break
+    end
+    prefix = candidate
   end
-  return value:sub(1, width - 3) .. "..."
+  return prefix .. suffix
 end
 
 ---@param value any
@@ -19,7 +27,7 @@ end
 ---@return string
 function text.column(value, width)
   value = text.shorten(value, width)
-  return value .. string.rep(" ", math.max(width - #value, 0))
+  return value .. string.rep(" ", math.max(width - vim.fn.strdisplaywidth(value), 0))
 end
 
 return text
