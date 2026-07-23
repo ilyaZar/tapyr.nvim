@@ -46,6 +46,24 @@ local function highlight(line, start_col, value, group)
   }
 end
 
+local function path_status(width, path, label, hint, compact_label, compact_hint)
+  if width < #label + #hint + 2 then
+    label = compact_label
+    hint = compact_hint
+  end
+  if width < #label + #hint + 2 then
+    label = ""
+  end
+  if width < #hint + 2 then
+    hint = text.shorten("[S]", width)
+  end
+  local path_width = math.max(width - #label - #hint - 1, 0)
+  path = text.shorten(path, path_width)
+  local left = label .. path
+  local gap = string.rep(" ", math.max(width - vim.fn.strdisplaywidth(left) - #hint, 0))
+  return left .. gap .. hint, label, path, hint
+end
+
 ---@param state table
 function view.capture(state)
   state.golex_input = state.golex_input or {}
@@ -64,23 +82,14 @@ function view.draw(state, bar, register)
   local highlights = {}
 
   if current_mode == "shelves" then
-    local active_label = "currently active shelf: "
-    local back_hint = "Back to Golex apps: [S]"
-    if width < #active_label + #back_hint + 2 then
-      active_label = "active shelf: "
-      back_hint = "[S] apps"
-    end
-    if width < #active_label + #back_hint + 2 then
-      active_label = ""
-    end
-    if width < #back_hint + 2 then
-      back_hint = text.shorten("[S]", width)
-    end
-    local path_width = math.max(width - #active_label - #back_hint - 1, 0)
-    local active_path = text.shorten(shelves.active(), path_width)
-    local left = active_label .. active_path
-    local gap = string.rep(" ", math.max(width - vim.fn.strdisplaywidth(left) - #back_hint, 0))
-    local status = left .. gap .. back_hint
+    local status, active_label, active_path, back_hint = path_status(
+      width,
+      shelves.active(),
+      "currently active shelf: ",
+      "Back to Golex apps: [S]",
+      "active shelf: ",
+      "[S] apps"
+    )
     local lines = {
       bar,
       status,
@@ -113,11 +122,17 @@ function view.draw(state, bar, register)
   end
 
   local shelf = shelves.active()
-  local shelf_label = "path to selected shelf: "
-  local shelf_path = text.shorten(shelf, math.max(width - #shelf_label, 1))
+  local status, shelf_label, shelf_path, shelves_hint = path_status(
+    width,
+    shelf,
+    "path to selected shelf: ",
+    "Switch to shelve selection: [S]",
+    "shelf: ",
+    "[S] shelves"
+  )
   local lines = {
     bar,
-    shelf_label .. shelf_path,
+    status,
     "",
     "Golex apps",
     string.rep("-", width),
@@ -125,6 +140,7 @@ function view.draw(state, bar, register)
   highlights = {
     highlight(2, 0, shelf_label, "Statement"),
     highlight(2, #shelf_label, shelf_path, "DiagnosticOk"),
+    highlight(2, #status - #shelves_hint, shelves_hint, "DiagnosticError"),
     highlight(4, 0, "Golex apps", { "DiagnosticOk", "Bold" }),
   }
   local found = entries.scan(shelf)
