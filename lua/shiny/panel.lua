@@ -592,10 +592,11 @@ local function draw(state, keep_selection)
 
   local view = active_view(state)
   local lines
+  local view_highlights
   if view == "apps" then
     lines = draw_apps(state)
   elseif view == "golex" then
-    lines = rgolem_view.draw(state, view_bar(state), function(line, item, key)
+    lines, view_highlights = rgolem_view.draw(state, view_bar(state), function(line, item, key)
       register_item(state, line, item, key)
     end)
   elseif view == "settings" then
@@ -640,13 +641,17 @@ local function draw(state, keep_selection)
       end
     end
   elseif view == "golex" then
-    for _, line_number in ipairs({ 2, 4, 6 }) do
-      if lines[line_number] and lines[line_number] ~= "" then
-        vim.api.nvim_buf_set_extmark(state.buf, highlight_namespace, line_number - 1, 0, {
-          end_col = #lines[line_number],
-          hl_group = line_number == 4 and "DiagnosticInfo" or { "DiagnosticOk", "Bold" },
-        })
-      end
+    for _, highlight in ipairs(view_highlights) do
+      vim.api.nvim_buf_set_extmark(
+        state.buf,
+        highlight_namespace,
+        highlight.line - 1,
+        highlight.start_col,
+        {
+          end_col = highlight.end_col,
+          hl_group = highlight.hl_group,
+        }
+      )
     end
   else
     for line_number, line in ipairs(lines) do

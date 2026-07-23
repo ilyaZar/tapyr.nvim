@@ -11,7 +11,7 @@ local text = require("shiny.text")
 
 local prefixes = {
   apps = "new Golex app > ",
-  shelves = "add shelf > ",
+  shelves = "add new shelf name > ",
 }
 local name_error_timeout = 6000
 
@@ -37,6 +37,15 @@ local function input_value(state)
   return state.golex_input and state.golex_input[mode(state)] or ""
 end
 
+local function highlight(line, start_col, value, group)
+  return {
+    line = line,
+    start_col = start_col,
+    end_col = start_col + #value,
+    hl_group = group,
+  }
+end
+
 ---@param state table
 function view.capture(state)
   state.golex_input = state.golex_input or {}
@@ -46,25 +55,43 @@ end
 ---@param state table
 ---@param bar string
 ---@param register fun(line: integer, item: table, key: string?)
----@return string[]
+---@return string[], table[]
 function view.draw(state, bar, register)
   state.golex_input = state.golex_input or {}
   local current_mode = mode(state)
   local input = state.golex_input[current_mode] or ""
   local width = vim.api.nvim_win_get_width(state.win)
-  local lines
+  local highlights = {}
 
   if current_mode == "shelves" then
-    lines = {
+    local active_label = "currently active shelf: "
+    local back_hint = "Back to Golex apps: [S]"
+    if width < #active_label + #back_hint + 2 then
+      active_label = "active shelf: "
+      back_hint = "[S] apps"
+    end
+    if width < #active_label + #back_hint + 2 then
+      active_label = ""
+    end
+    if width < #back_hint + 2 then
+      back_hint = text.shorten("[S]", width)
+    end
+    local path_width = math.max(width - #active_label - #back_hint - 1, 0)
+    local active_path = text.shorten(shelves.active(), path_width)
+    local left = active_label .. active_path
+    local gap = string.rep(" ", math.max(width - vim.fn.strdisplaywidth(left) - #back_hint, 0))
+    local status = left .. gap .. back_hint
+    local lines = {
       bar,
-      "active shelf  " .. text.shorten(shelves.active(), math.max(width - 14, 1)),
+      status,
       "",
-      prefixes.shelves .. input,
-      "",
-      "shelves",
+      "Shelf selection",
       string.rep("-", width),
     }
-    register(4, { kind = "golex_input" }, input_key(state))
+    highlights[#highlights + 1] = highlight(2, 0, active_label, "Statement")
+    highlights[#highlights + 1] = highlight(2, #active_label, active_path, "DiagnosticOk")
+    highlights[#highlights + 1] = highlight(2, #status - #back_hint, back_hint, "DiagnosticError")
+    highlights[#highlights + 1] = highlight(4, 0, "Shelf selection", { "DiagnosticOk", "Bold" })
     for index, path in ipairs(shelves.all()) do
       local line = #lines + 1
       local marker = index == shelves.active_index() and "* " or "  "
@@ -75,18 +102,33 @@ function view.draw(state, bar, register)
         path = path,
       }, "golex:shelf:" .. path)
     end
-    return lines
+    lines[#lines + 1] = ""
+    lines[#lines + 1] = "Add new shelf"
+    highlights[#highlights + 1] = highlight(#lines, 0, "Add new shelf", { "DiagnosticOk", "Bold" })
+    lines[#lines + 1] = string.rep("-", width)
+    lines[#lines + 1] = prefixes.shelves .. input
+    register(#lines, { kind = "golex_input" }, input_key(state))
+    highlights[#highlights + 1] = highlight(#lines, 0, lines[#lines], "DiagnosticInfo")
+    return lines, highlights
   end
 
   local shelf = shelves.active()
-  lines = {
+  local shelf_label = "path to selected shelf: "
+  local shelf_path = text.shorten(shelf, math.max(width - #shelf_label, 1))
+  local lines = {
     bar,
-    "shelf  " .. text.shorten(shelf, math.max(width - 7, 1)),
+    shelf_label .. shelf_path,
     "",
     prefixes.apps .. input,
     "",
     "Golex apps",
     string.rep("-", width),
+  }
+  highlights = {
+    highlight(2, 0, shelf_label, "Statement"),
+    highlight(2, #shelf_label, shelf_path, "DiagnosticOk"),
+    highlight(4, 0, lines[4], "DiagnosticInfo"),
+    highlight(6, 0, "Golex apps", { "DiagnosticOk", "Bold" }),
   }
   register(4, { kind = "golex_input" }, input_key(state))
   local found = entries.scan(shelf)
@@ -103,7 +145,7 @@ function view.draw(state, bar, register)
       }, "golex:entry:" .. shelf .. ":" .. name)
     end
   end
-  return lines
+  return lines, highlights
 end
 
 ---@param state table

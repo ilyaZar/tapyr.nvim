@@ -222,16 +222,18 @@ draft is preserved. `Esc` returns to normal mode without discarding the draft.
 Invalid `Enter` submissions keep the editor open for correction. Typing happens
 in an isolated one-line input, so the rest of the panel cannot be edited.
 Custom names follow R's package-name rule: at least two characters, an ASCII
-letter first, only ASCII letters, digits, or dots, and no trailing dot.
+letter first, only ASCII letters, digits, or dots, no spaces, and no trailing
+dot.
 
 On a project row:
 
 - `Enter` opens the Open/Recreate dialog
 - `d` asks before recursively deleting that project
 
-Press `S` for shelves. Its editable row adds a shelf; `Enter` selects a shelf,
-and `d` asks before recursively deleting the selected shelf directory and every
-project below it. The configured default shelf cannot be deleted.
+Press `S` for shelves. Shelf selection appears first, followed by a separate
+Add new shelf section. `Enter` selects a shelf, and `d` asks before recursively
+deleting the selected shelf directory and every project below it. The
+configured default shelf cannot be deleted.
 
 Golex apps and shelves are intentionally disposable. Deletion removes their
 directories, not only their registry entries. Every destructive prompt names the

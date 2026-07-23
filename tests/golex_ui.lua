@@ -58,6 +58,20 @@ local function footer_text()
   return helpers.rendered_footer(state.win)
 end
 
+local function has_highlight(line, start_col, group)
+  for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(panel_buf, -1, 0, -1, { details = true })) do
+    if mark[2] == line - 1 and mark[3] == start_col and mark[4].hl_group == group then
+      return true
+    end
+  end
+  return false
+end
+
+local panel_width = vim.api.nvim_win_get_width(state.win)
+local path_label = "path to selected shelf: "
+assert(vim.startswith(lines[2], path_label), "Golex shelf path label is unclear")
+assert(has_highlight(2, 0, "Statement"), "Golex shelf path label is not light purple")
+assert(has_highlight(2, #path_label, "DiagnosticOk"), "Golex shelf path is not green")
 assert(footer_text():find("[Enter] create/open", 1, true), "Golex footer syntax changed")
 assert(
   footer_text():find("[N/i] edit Golex app name", 1, true),
@@ -65,7 +79,6 @@ assert(
 )
 assert(not footer_text():find("[n]", 1, true), "removed Golex next action remained visible")
 assert(not footer_text():find("[R]", 1, true), "Apps footer action leaked into Golex")
-local panel_width = vim.api.nvim_win_get_width(state.win)
 for _, line in ipairs(lines) do
   assert(
     vim.fn.strdisplaywidth(line) <= panel_width,
@@ -184,9 +197,32 @@ end
 
 vim.api.nvim_feedkeys("S", "x", false)
 lines = vim.api.nvim_buf_get_lines(panel_buf, 0, -1, false)
-assert(lines[4] == "add shelf > ", "shelf manager lacks its editable row")
+local active_label = "currently active shelf: "
+local back_hint = "Back to Golex apps: [S]"
+assert(vim.startswith(lines[2], active_label), "active shelf label is unclear")
+assert(vim.endswith(lines[2], back_hint), "shelf view lacks its return hint")
+assert(vim.fn.strdisplaywidth(lines[2]) == panel_width, "shelf return hint is not right aligned")
+assert(has_highlight(2, 0, "Statement"), "active shelf label is not light purple")
+assert(has_highlight(2, #active_label, "DiagnosticOk"), "active shelf path is not green")
+assert(has_highlight(2, #lines[2] - #back_hint, "DiagnosticError"), "shelf return hint is not red")
+assert(lines[4] == "Shelf selection", "shelf choices are not the first section")
+assert(vim.startswith(lines[6], "* "), "active shelf is not first in the selection section")
+assert(lines[8] == "Add new shelf", "new shelf section is missing")
+assert(lines[10] == "add new shelf name > ", "shelf manager lacks its renamed input")
+assert(vim.api.nvim_win_get_cursor(state.win)[1] == 6, "shelf selection is not the default focus")
 assert(footer_text():find("[N/i] edit shelf path", 1, true), "shelf footer did not adjust")
 assert(not footer_text():find("new Golex app", 1, true), "app footer leaked into shelves")
+for _, line in ipairs(lines) do
+  assert(vim.fn.strdisplaywidth(line) <= panel_width, "reworked shelf view clipped")
+end
+
+vim.api.nvim_win_set_width(state.win, 44)
+state.golex_api.draw(true)
+local compact_lines = vim.api.nvim_buf_get_lines(panel_buf, 0, -1, false)
+assert(vim.endswith(compact_lines[2], "[S] apps"), "narrow shelf view lacks its return hint")
+assert(vim.fn.strdisplaywidth(compact_lines[2]) <= 44, "compact shelf status clipped")
+vim.api.nvim_win_set_width(state.win, panel_width)
+state.golex_api.draw(true)
 
 local function input_mapping(bufnr)
   for _, keymap in ipairs(vim.api.nvim_buf_get_keymap(bufnr, "i")) do
@@ -199,6 +235,7 @@ end
 local new_shelf = vim.fs.joinpath(root, "extra")
 mapping("Shiny: create in current view").callback()
 local shelf_input = vim.api.nvim_get_current_buf()
+assert(vim.api.nvim_win_get_cursor(state.win)[1] == 10, "new shelf action did not select its input")
 vim.api.nvim_buf_set_lines(shelf_input, 0, -1, false, { new_shelf })
 vim.api.nvim_exec_autocmds("TextChangedI", { buffer = shelf_input })
 input_mapping(shelf_input).callback()
