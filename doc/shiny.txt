@@ -168,7 +168,8 @@ Golex:
 Enter                   Create input or open the selected item.
 d                       Delete the selected app or shelf after confirmation.
 S                       Switch between projects and shelves.
-N                       Edit the next numbered Golex app name.
+N                       Start or resume Golex name editing.
+i                       Start or resume Golex name editing.
 
 Settings:
 
@@ -213,8 +214,10 @@ Python commands. It is optional for managed apps.
 ==============================================================================
 7. Golex                                                         *shiny-golex*
 
-The Golex tab keeps an input row above selectable scratch projects. N proposes
-the next numbered name. Change it if needed and press Enter. The isolated
+The Golex tab keeps an input row above selectable scratch projects. N or i
+opens the editor. An empty row proposes the next numbered name; an existing
+draft is preserved. Esc returns to normal mode without discarding the draft.
+An invalid Enter submission keeps the editor open for correction. The isolated
 one-line editor cannot modify the rest of the panel.
 
 Custom names must have at least two characters, start with an ASCII letter,

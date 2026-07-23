@@ -140,7 +140,7 @@ local settings_items = {
 
 local golex_help = {
   { label = "Enter", help = "create input or open the selected Golex item" },
-  { label = "N", help = "edit the next numbered Golex app name" },
+  { label = "N/i", help = "start or resume Golex name editing" },
   { label = "d", help = "delete the selected app or shelf after confirmation" },
   { label = "S", help = "switch between Golex apps and shelves" },
 }
@@ -1014,6 +1014,11 @@ function panel.open(root, current_app, initial_view)
       rgolem_view.new_input(state, state.golex_api)
     end
   end, "Shiny: create in current view")
+  map(state, "i", function()
+    if active_view(state) == "golex" then
+      rgolem_view.new_input(state, state.golex_api)
+    end
+  end, "Shiny: edit Golex input")
   map(state, actions.move.keys[1], function()
     move_selection(state, 1)
   end, "Shiny: next item")

@@ -315,7 +315,7 @@ assert(find_line(help_lines, "use the selected item"), "Help omitted Enter")
 assert(find_line(help_lines, "stop the selected running app"), "Help omitted guarded stop")
 assert(find_line(help_lines, "default browser"), "Help omitted browser behavior")
 assert(find_line(help_lines, "configured app template"), "Help omitted template behavior")
-assert(find_line(help_lines, "edit the next numbered Golex app name"), "Help omitted Golex new")
+assert(find_line(help_lines, "start or resume Golex name editing"), "Help omitted Golex editor")
 assert(find_line(help_lines, "delete the selected app or shelf"), "Help omitted Golex delete")
 assert(find_line(help_lines, "running     1"), "Help running count does not match Apps")
 assert(find_line(help_lines, "stopped     0"), "Help stopped count does not match Apps")
@@ -401,7 +401,10 @@ assert(golex_lines[4] == "new Golex app > ", "Golex editable row changed")
 assert(vim.api.nvim_win_get_cursor(0)[1] == 4, "Golex input row was not selected")
 footer_text = helpers.rendered_footer()
 assert(footer_text:find("[Enter] create/open", 1, true), "Golex Enter action is missing")
-assert(footer_text:find("[N] new Golex app", 1, true), "Golex new-app action is missing")
+assert(
+  footer_text:find("[N/i] edit Golex app name", 1, true),
+  "Golex name-editor action is missing"
+)
 assert(not footer_text:find("[n]", 1, true), "removed Golex next action remained in the footer")
 assert(not footer_text:find("[R] (re)start", 1, true), "Apps actions leaked into Golex")
 

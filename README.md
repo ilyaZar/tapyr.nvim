@@ -198,7 +198,7 @@ Every tab uses the same bracketed footer syntax, but only its visible actions
 are active:
 
 - Apps: app details, restart, stop, browser, refresh, app template, close
-- Golex: create/open, delete, shelves, new Golex app, close
+- Golex: create/open, delete, shelves, edit Golex app name, close
 - Settings: edit setting, close
 - Help: open link, close
 
@@ -216,11 +216,13 @@ configured. Shiny never creates or overwrites the settings file.
 
 ## Golex
 
-The Golex tab keeps an input row above the selectable projects. Press `N` to
-start with the next numbered name, change it if needed, and press `Enter`.
-Typing happens in an isolated one-line input, so the rest of the panel cannot
-be edited. Custom names follow R's package-name rule: at least two characters,
-an ASCII letter first, only ASCII letters, digits, or dots, and no trailing dot.
+The Golex tab keeps an input row above the selectable projects. Press `N` or
+`i` to edit it. An empty row starts with the next numbered name; an existing
+draft is preserved. `Esc` returns to normal mode without discarding the draft.
+Invalid `Enter` submissions keep the editor open for correction. Typing happens
+in an isolated one-line input, so the rest of the panel cannot be edited.
+Custom names follow R's package-name rule: at least two characters, an ASCII
+letter first, only ASCII letters, digits, or dots, and no trailing dot.
 
 On a project row:
 

@@ -59,7 +59,10 @@ local function footer_text()
 end
 
 assert(footer_text():find("[Enter] create/open", 1, true), "Golex footer syntax changed")
-assert(footer_text():find("[N] new Golex app", 1, true), "Golex footer lacks its new action")
+assert(
+  footer_text():find("[N/i] edit Golex app name", 1, true),
+  "Golex footer lacks its name editor"
+)
 assert(not footer_text():find("[n]", 1, true), "removed Golex next action remained visible")
 assert(not footer_text():find("[R]", 1, true), "Apps footer action leaked into Golex")
 local panel_width = vim.api.nvim_win_get_width(state.win)
@@ -182,7 +185,7 @@ end
 vim.api.nvim_feedkeys("S", "x", false)
 lines = vim.api.nvim_buf_get_lines(panel_buf, 0, -1, false)
 assert(lines[4] == "add shelf > ", "shelf manager lacks its editable row")
-assert(footer_text():find("[N] new shelf", 1, true), "shelf footer did not adjust")
+assert(footer_text():find("[N/i] edit shelf path", 1, true), "shelf footer did not adjust")
 assert(not footer_text():find("new Golex app", 1, true), "app footer leaked into shelves")
 
 local function input_mapping(bufnr)
@@ -206,7 +209,8 @@ state.golex_api.draw()
 
 vim.api.nvim_feedkeys("j", "x", false)
 assert(not mapping("Shiny: create next Golex app"), "removed Golex n mapping remained active")
-assert(not mapping("Shiny: edit Golex input"), "hidden Golex insert aliases remained active")
+local edit_mapping = assert(mapping("Shiny: edit Golex input"), "Golex i mapping is missing")
+assert(edit_mapping.lhs == "i", "Golex editor does not use the insert-mode key")
 
 local created_name
 create.at = function(_, package_name)
@@ -230,20 +234,68 @@ assert(
 )
 lines = vim.api.nvim_buf_get_lines(panel_buf, 0, -1, false)
 assert(lines[6] == "Golex apps", "Golex input altered protected panel text")
+vim.api.nvim_buf_set_lines(input_buf, 0, -1, false, { "remember.me" })
+vim.api.nvim_exec_autocmds("TextChangedI", { buffer = input_buf })
 state.golex_edit.finish(false)
 assert(vim.api.nvim_get_current_buf() == panel_buf, "leaving Golex input did not restore the panel")
 assert(
-  vim.api.nvim_buf_get_lines(panel_buf, 3, 4, false)[1] == "new Golex app > golex03",
-  "leaving Golex input lost its proposed name"
+  vim.api.nvim_buf_get_lines(panel_buf, 3, 4, false)[1] == "new Golex app > remember.me",
+  "leaving Golex input lost its edited name"
 )
 
+edit_mapping.callback()
+input_buf = vim.api.nvim_get_current_buf()
+assert(vim.api.nvim_get_current_line() == "remember.me", "Golex i did not resume the edited name")
+state.golex_edit.finish(false)
 mapping("Shiny: create in current view").callback()
 input_buf = vim.api.nvim_get_current_buf()
+assert(vim.api.nvim_get_current_line() == "remember.me", "Golex N replaced the edited name")
+
+local notification
+local original_notify = vim.notify
+vim.notify = function(message, level, options)
+  notification = { message = message, level = level, options = options }
+end
+vim.api.nvim_buf_set_lines(input_buf, 0, -1, false, { "bad_name" })
+vim.api.nvim_exec_autocmds("TextChangedI", { buffer = input_buf })
+vim.api.nvim_win_set_cursor(0, { 1, #"bad_name" })
+input_mapping(input_buf).callback()
+assert(vim.api.nvim_get_current_buf() == input_buf, "invalid Golex input closed its editor")
+assert(state.golex_edit and state.golex_edit.buf == input_buf, "invalid Golex input became inert")
+assert(vim.api.nvim_win_get_cursor(0)[2] == #"bad_name", "invalid Golex input moved the cursor")
+assert(
+  notification and notification.level == vim.log.levels.WARN,
+  "invalid name warning is missing"
+)
+assert(notification.options.timeout == 6000, "invalid name warning does not last six seconds")
+assert(
+  notification.message:find("ASCII letter first", 1, true),
+  "invalid name warning omitted the R package-name rule"
+)
+
 vim.api.nvim_buf_set_lines(input_buf, 0, -1, false, { "my.app" })
 vim.api.nvim_exec_autocmds("TextChangedI", { buffer = input_buf })
 input_mapping(input_buf).callback()
 assert(created_name == "my.app", "Golex input did not submit its edited package name")
 assert(vim.api.nvim_get_current_buf() == panel_buf, "Golex submit did not restore the panel")
+
+mapping("Shiny: create in current view").callback()
+input_buf = vim.api.nvim_get_current_buf()
+vim.api.nvim_buf_set_lines(input_buf, 0, -1, false, { "still_bad" })
+vim.api.nvim_exec_autocmds("TextChangedI", { buffer = input_buf })
+state.golex_edit.finish(false)
+notification = nil
+mapping("Shiny: open selected item").callback()
+assert(notification and notification.options.timeout == 6000, "normal-mode validation is too short")
+assert(vim.api.nvim_get_current_buf() == panel_buf, "normal-mode validation left the panel")
+edit_mapping.callback()
+input_buf = vim.api.nvim_get_current_buf()
+assert(vim.api.nvim_get_current_line() == "still_bad", "Golex i lost the invalid draft")
+vim.api.nvim_buf_set_lines(input_buf, 0, -1, false, { "fixed.app" })
+vim.api.nvim_exec_autocmds("TextChangedI", { buffer = input_buf })
+input_mapping(input_buf).callback()
+assert(created_name == "fixed.app", "corrected Golex draft did not submit")
+vim.notify = original_notify
 
 vim.api.nvim_feedkeys(vim.keycode("<Tab>"), "x", false)
 local settings_footer = footer_text()

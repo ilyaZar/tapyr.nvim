@@ -13,6 +13,7 @@ local prefixes = {
   apps = "new Golex app > ",
   shelves = "add shelf > ",
 }
+local name_error_timeout = 6000
 
 local function mode(state)
   state.golex_mode = state.golex_mode or "apps"
@@ -113,7 +114,7 @@ function view.footer(state)
       { label = "Enter", text = "add/select" },
       { label = "d", text = "delete shelf" },
       { label = "S", text = "Golex apps" },
-      { label = "N", text = "new shelf" },
+      { label = "N/i", text = "edit shelf path" },
       { label = "q", text = "close" },
     }
   end
@@ -121,7 +122,7 @@ function view.footer(state)
     { label = "Enter", text = "create/open" },
     { label = "d", text = "delete" },
     { label = "S", text = "shelves" },
-    { label = "N", text = "new Golex app" },
+    { label = "N/i", text = "edit Golex app name" },
     { label = "q", text = "close" },
   }
 end
@@ -167,11 +168,17 @@ local function open_entry(state, item, api)
   end)
 end
 
-local function create_input(state, api)
-  local input = input_value(state)
-  local package_name, error_message = name.resolve(input)
+local function resolve_name(value)
+  local package_name, error_message = name.resolve(value)
   if not package_name then
-    messages.show(error_message, vim.log.levels.WARN)
+    messages.show(error_message, vim.log.levels.WARN, name_error_timeout)
+  end
+  return package_name
+end
+
+local function create_input(state, api, package_name)
+  package_name = package_name or resolve_name(input_value(state))
+  if not package_name then
     return
   end
 
@@ -298,10 +305,8 @@ function view.new_input(state, api)
   view.close_input(state)
 
   local current_mode = mode(state)
-  if current_mode == "apps" then
+  if current_mode == "apps" and state.golex_input.apps == "" then
     state.golex_input.apps = name.numbered(entries.next_number(shelves.active()))
-  else
-    state.golex_input.shelves = ""
   end
   api.draw(true)
 
@@ -338,12 +343,24 @@ function view.new_input(state, api)
     if closed then
       return
     end
-    closed = true
     local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
     if #lines == 1 then
       last_value = lines[1]
     end
     state.golex_input[current_mode] = last_value
+
+    local package_name
+    if submit and current_mode == "apps" then
+      package_name = resolve_name(last_value)
+      if not package_name then
+        return
+      end
+    elseif submit and vim.trim(last_value) == "" then
+      messages.show("Enter a shelf directory", vim.log.levels.WARN)
+      return
+    end
+
+    closed = true
     discard_input(state)
     if not vim.api.nvim_win_is_valid(state.win) then
       return
@@ -352,7 +369,7 @@ function view.new_input(state, api)
     api.draw(true)
     if submit then
       if current_mode == "apps" then
-        create_input(state, api)
+        create_input(state, api, package_name)
       else
         add_shelf(state, api)
       end
