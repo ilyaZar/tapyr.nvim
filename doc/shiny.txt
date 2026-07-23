@@ -214,12 +214,12 @@ Python commands. It is optional for managed apps.
 ==============================================================================
 7. Golex                                                         *shiny-golex*
 
-The Golex tab starts with an Add new Golex app section, followed by selectable
-scratch projects. N or i opens the name editor. An empty row proposes the next
-numbered name; an existing draft is preserved. Esc returns to normal mode
-without discarding the draft. An invalid Enter submission keeps the editor
-open for correction. The isolated one-line editor cannot modify the rest of
-the panel.
+The Golex tab lists selectable scratch projects first and places the Add new
+Golex app section below them. N or i opens the name editor. An empty row
+proposes the next numbered name; an existing draft is preserved. Esc returns
+to normal mode without discarding the draft. An invalid Enter submission keeps
+the editor open for correction. The isolated one-line editor cannot modify the
+rest of the panel.
 
 Custom names must have at least two characters, start with an ASCII letter,
 contain only ASCII letters, digits, or dots, contain no spaces, and not end

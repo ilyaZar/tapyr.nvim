@@ -216,8 +216,8 @@ configured. Shiny never creates or overwrites the settings file.
 
 ## Golex
 
-The Golex tab starts with an Add new Golex app section, followed by the
-selectable projects. Press `N` or `i` to edit the new Golex app name. An empty
+The Golex tab lists selectable projects first and places the Add new Golex app
+section below them. Press `N` or `i` to edit the new Golex app name. An empty
 row starts with the next numbered name; an existing draft is preserved. `Esc`
 returns to normal mode without discarding the draft. Invalid `Enter`
 submissions keep the editor open for correction. Typing happens in an isolated

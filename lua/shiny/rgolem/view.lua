@@ -119,21 +119,14 @@ function view.draw(state, bar, register)
     bar,
     shelf_label .. shelf_path,
     "",
-    "Add new Golex app",
-    string.rep("-", width),
-    prefixes.apps .. input,
-    "",
     "Golex apps",
     string.rep("-", width),
   }
   highlights = {
     highlight(2, 0, shelf_label, "Statement"),
     highlight(2, #shelf_label, shelf_path, "DiagnosticOk"),
-    highlight(4, 0, "Add new Golex app", { "DiagnosticOk", "Bold" }),
-    highlight(6, 0, lines[6], "DiagnosticInfo"),
-    highlight(8, 0, "Golex apps", { "DiagnosticOk", "Bold" }),
+    highlight(4, 0, "Golex apps", { "DiagnosticOk", "Bold" }),
   }
-  register(6, { kind = "golex_input" }, input_key(state))
   local found = entries.scan(shelf)
   if vim.tbl_isempty(found) then
     lines[#lines + 1] = "No Golex apps in this shelf"
@@ -148,6 +141,14 @@ function view.draw(state, bar, register)
       }, "golex:entry:" .. shelf .. ":" .. name)
     end
   end
+  lines[#lines + 1] = ""
+  lines[#lines + 1] = "Add new Golex app"
+  highlights[#highlights + 1] =
+    highlight(#lines, 0, "Add new Golex app", { "DiagnosticOk", "Bold" })
+  lines[#lines + 1] = string.rep("-", width)
+  lines[#lines + 1] = prefixes.apps .. input
+  register(#lines, { kind = "golex_input" }, input_key(state))
+  highlights[#highlights + 1] = highlight(#lines, 0, lines[#lines], "DiagnosticInfo")
   return lines, highlights
 end
 
