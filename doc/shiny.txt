@@ -165,11 +165,11 @@ N                       Choose an app template and destination.
 
 Golex:
 
-Enter                   Create input or open the selected item.
+Enter                   Open the selected app or select a shelf.
 d                       Delete the selected app or shelf after confirmation.
 S                       Switch between projects and shelves.
-N                       Start or resume Golex name editing.
-i                       Start or resume Golex name editing.
+N                       Start or resume app or shelf input editing.
+i                       Start or resume app or shelf input editing.
 
 Settings:
 
@@ -214,11 +214,12 @@ Python commands. It is optional for managed apps.
 ==============================================================================
 7. Golex                                                         *shiny-golex*
 
-The Golex tab keeps an input row above selectable scratch projects. N or i
-opens the editor. An empty row proposes the next numbered name; an existing
-draft is preserved. Esc returns to normal mode without discarding the draft.
-An invalid Enter submission keeps the editor open for correction. The isolated
-one-line editor cannot modify the rest of the panel.
+The Golex tab starts with an Add new Golex app section, followed by selectable
+scratch projects. N or i opens the name editor. An empty row proposes the next
+numbered name; an existing draft is preserved. Esc returns to normal mode
+without discarding the draft. An invalid Enter submission keeps the editor
+open for correction. The isolated one-line editor cannot modify the rest of
+the panel.
 
 Custom names must have at least two characters, start with an ASCII letter,
 contain only ASCII letters, digits, or dots, contain no spaces, and not end
@@ -226,7 +227,10 @@ with a dot. Numeric input becomes golexNN.
 
 Enter on a project opens the Open/Recreate dialog. d asks before recursively
 deleting it. S opens shelves, where Shelf selection appears before a separate
-Add new shelf section. Enter switches the active shelf.
+Add new shelf section. Enter a shelf name or path, then confirm or edit its full
+path in the popup. The popup prepends Neovim's current working directory. If
+the typed value was already a full path, delete that prefix while keeping the
+typed value. Enter on an existing shelf switches the active shelf.
 
 Deleting a non-default shelf recursively deletes its directory and every
 project below it. The configured default shelf cannot be deleted. Golex apps

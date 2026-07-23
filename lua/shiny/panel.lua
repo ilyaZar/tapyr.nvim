@@ -139,8 +139,8 @@ local settings_items = {
 }
 
 local golex_help = {
-  { label = "Enter", help = "create input or open the selected Golex item" },
-  { label = "N/i", help = "start or resume Golex name editing" },
+  { label = "Enter", help = "open the selected app or select a shelf" },
+  { label = "N/i", help = "edit the new Golex app or shelf name/path" },
   { label = "d", help = "delete the selected app or shelf after confirmation" },
   { label = "S", help = "switch between Golex apps and shelves" },
 }

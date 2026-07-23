@@ -198,7 +198,7 @@ Every tab uses the same bracketed footer syntax, but only its visible actions
 are active:
 
 - Apps: app details, restart, stop, browser, refresh, app template, close
-- Golex: create/open, delete, shelves, edit Golex app name, close
+- Golex: open in external editor, delete, shelves, edit app name, close
 - Settings: edit setting, close
 - Help: open link, close
 
@@ -216,14 +216,14 @@ configured. Shiny never creates or overwrites the settings file.
 
 ## Golex
 
-The Golex tab keeps an input row above the selectable projects. Press `N` or
-`i` to edit it. An empty row starts with the next numbered name; an existing
-draft is preserved. `Esc` returns to normal mode without discarding the draft.
-Invalid `Enter` submissions keep the editor open for correction. Typing happens
-in an isolated one-line input, so the rest of the panel cannot be edited.
-Custom names follow R's package-name rule: at least two characters, an ASCII
-letter first, only ASCII letters, digits, or dots, no spaces, and no trailing
-dot.
+The Golex tab starts with an Add new Golex app section, followed by the
+selectable projects. Press `N` or `i` to edit the new Golex app name. An empty
+row starts with the next numbered name; an existing draft is preserved. `Esc`
+returns to normal mode without discarding the draft. Invalid `Enter`
+submissions keep the editor open for correction. Typing happens in an isolated
+one-line input, so the rest of the panel cannot be edited. Custom names follow
+R's package-name rule: at least two characters, an ASCII letter first, only
+ASCII letters, digits, or dots, no spaces, and no trailing dot.
 
 On a project row:
 
@@ -231,9 +231,12 @@ On a project row:
 - `d` asks before recursively deleting that project
 
 Press `S` for shelves. Shelf selection appears first, followed by a separate
-Add new shelf section. `Enter` selects a shelf, and `d` asks before recursively
-deleting the selected shelf directory and every project below it. The
-configured default shelf cannot be deleted.
+Add new shelf section. Enter a shelf name or path, then confirm or edit its full
+path in the popup. The popup prepends Neovim's current working directory to the
+typed value. For an already complete path, delete that prefix while keeping the
+typed path. `Enter` selects a shelf, and `d` asks before recursively deleting
+the selected shelf directory and every project below it. The configured
+default shelf cannot be deleted.
 
 Golex apps and shelves are intentionally disposable. Deletion removes their
 directories, not only their registry entries. Every destructive prompt names the

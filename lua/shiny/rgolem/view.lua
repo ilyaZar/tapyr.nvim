@@ -10,7 +10,7 @@ local shelves = require("shiny.rgolem.shelves")
 local text = require("shiny.text")
 
 local prefixes = {
-  apps = "new Golex app > ",
+  apps = "new Golex app name > ",
   shelves = "add new shelf name > ",
 }
 local name_error_timeout = 6000
@@ -119,6 +119,8 @@ function view.draw(state, bar, register)
     bar,
     shelf_label .. shelf_path,
     "",
+    "Add new Golex app",
+    string.rep("-", width),
     prefixes.apps .. input,
     "",
     "Golex apps",
@@ -127,10 +129,11 @@ function view.draw(state, bar, register)
   highlights = {
     highlight(2, 0, shelf_label, "Statement"),
     highlight(2, #shelf_label, shelf_path, "DiagnosticOk"),
-    highlight(4, 0, lines[4], "DiagnosticInfo"),
-    highlight(6, 0, "Golex apps", { "DiagnosticOk", "Bold" }),
+    highlight(4, 0, "Add new Golex app", { "DiagnosticOk", "Bold" }),
+    highlight(6, 0, lines[6], "DiagnosticInfo"),
+    highlight(8, 0, "Golex apps", { "DiagnosticOk", "Bold" }),
   }
-  register(4, { kind = "golex_input" }, input_key(state))
+  register(6, { kind = "golex_input" }, input_key(state))
   local found = entries.scan(shelf)
   if vim.tbl_isempty(found) then
     lines[#lines + 1] = "No Golex apps in this shelf"
@@ -153,15 +156,15 @@ end
 function view.footer(state)
   if mode(state) == "shelves" then
     return {
-      { label = "Enter", text = "add/select" },
+      { label = "Enter", text = "select" },
       { label = "d", text = "delete shelf" },
       { label = "S", text = "Golex apps" },
-      { label = "N/i", text = "edit shelf path" },
+      { label = "N/i", text = "edit shelf name/path" },
       { label = "q", text = "close" },
     }
   end
   return {
-    { label = "Enter", text = "create/open" },
+    { label = "Enter", text = "open w/ external editor" },
     { label = "d", text = "delete" },
     { label = "S", text = "shelves" },
     { label = "N/i", text = "edit Golex app name" },
@@ -236,15 +239,29 @@ local function create_input(state, api, package_name)
 end
 
 local function add_shelf(state, api)
-  local path = vim.trim(input_value(state))
-  if path == "" then
-    messages.show("Enter a shelf directory", vim.log.levels.WARN)
+  local input = vim.trim(input_value(state))
+  if input == "" then
+    messages.show("Enter a shelf name or path", vim.log.levels.WARN)
     return
   end
-  shelves.add(path)
-  state.golex_input.shelves = ""
-  state.golex_mode = "apps"
-  api.draw()
+  local cwd = vim.fs.normalize(vim.uv.cwd()):gsub("[/\\]+$", "")
+  local rooted = input:match("^[/\\]") or input:match("^%a:[/\\]")
+  local separator = rooted and "" or package.config:sub(1, 1)
+  local default = cwd .. separator .. input
+  vim.ui.input({
+    prompt = "New shelf path: ",
+    default = default,
+    completion = "dir",
+  }, function(path)
+    path = path and vim.trim(path) or ""
+    if path == "" then
+      return
+    end
+    shelves.add(path)
+    state.golex_input.shelves = ""
+    state.golex_mode = "apps"
+    api.draw()
+  end)
 end
 
 ---@param state table
@@ -398,7 +415,7 @@ function view.new_input(state, api)
         return
       end
     elseif submit and vim.trim(last_value) == "" then
-      messages.show("Enter a shelf directory", vim.log.levels.WARN)
+      messages.show("Enter a shelf name or path", vim.log.levels.WARN)
       return
     end
 

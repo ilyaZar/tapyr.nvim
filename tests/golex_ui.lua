@@ -50,9 +50,11 @@ local state = require("shiny.panel").open(root, nil, "golex")
 local panel_buf = state.buf
 local lines = vim.api.nvim_buf_get_lines(panel_buf, 0, -1, false)
 assert(lines[1]:find("[Golex]", 1, true), "native Golex tab did not open")
-assert(lines[4] == "new Golex app > ", "Golex input is not the first data row")
-assert(lines[8] == "golex01" and lines[9] == "golex02", "Golex entries were not listed")
-assert(vim.api.nvim_win_get_cursor(state.win)[1] == 4, "Golex input was not selected")
+assert(lines[4] == "Add new Golex app", "Golex creation is not the first section")
+assert(lines[6] == "new Golex app name > ", "Golex input prompt changed")
+assert(lines[8] == "Golex apps", "Golex app selection section is missing")
+assert(lines[10] == "golex01" and lines[11] == "golex02", "Golex entries were not listed")
+assert(vim.api.nvim_win_get_cursor(state.win)[1] == 6, "Golex input was not selected")
 
 local function footer_text()
   return helpers.rendered_footer(state.win)
@@ -72,7 +74,10 @@ local path_label = "path to selected shelf: "
 assert(vim.startswith(lines[2], path_label), "Golex shelf path label is unclear")
 assert(has_highlight(2, 0, "Statement"), "Golex shelf path label is not light purple")
 assert(has_highlight(2, #path_label, "DiagnosticOk"), "Golex shelf path is not green")
-assert(footer_text():find("[Enter] create/open", 1, true), "Golex footer syntax changed")
+assert(
+  footer_text():find("[Enter] open w/ external editor", 1, true),
+  "Golex footer syntax changed"
+)
 assert(
   footer_text():find("[N/i] edit Golex app name", 1, true),
   "Golex footer lacks its name editor"
@@ -107,7 +112,7 @@ vim.api.nvim_feedkeys("R", "x", false)
 assert(not restarted, "hidden Apps restart remained active in Golex")
 
 vim.api.nvim_feedkeys("j", "x", false)
-assert(vim.api.nvim_win_get_cursor(state.win)[1] == 8, "Golex entry navigation changed")
+assert(vim.api.nvim_win_get_cursor(state.win)[1] == 10, "Golex entry navigation changed")
 vim.api.nvim_feedkeys(vim.keycode("<CR>"), "x", false)
 assert(vim.bo.filetype == "shiny-dialog", "Golex entry action did not use the shared dialog")
 local dialog_footer = {}
@@ -135,7 +140,7 @@ for _, keymap in ipairs(vim.api.nvim_buf_get_keymap(0, "n")) do
 end
 vim.api.nvim_feedkeys("q", "x", false)
 assert(vim.api.nvim_get_current_buf() == panel_buf, "dialog cancel did not restore Golex")
-assert(vim.api.nvim_win_get_cursor(state.win)[1] == 8, "dialog cancel lost Golex selection")
+assert(vim.api.nvim_win_get_cursor(state.win)[1] == 10, "dialog cancel lost Golex selection")
 
 vim.api.nvim_feedkeys("d", "x", false)
 assert(vim.bo.filetype == "shiny-dialog", "Golex delete did not open its confirmation")
@@ -210,7 +215,8 @@ assert(vim.startswith(lines[6], "* "), "active shelf is not first in the selecti
 assert(lines[8] == "Add new shelf", "new shelf section is missing")
 assert(lines[10] == "add new shelf name > ", "shelf manager lacks its renamed input")
 assert(vim.api.nvim_win_get_cursor(state.win)[1] == 6, "shelf selection is not the default focus")
-assert(footer_text():find("[N/i] edit shelf path", 1, true), "shelf footer did not adjust")
+assert(footer_text():find("[Enter] select", 1, true), "shelf Enter action is unclear")
+assert(footer_text():find("[N/i] edit shelf name/path", 1, true), "shelf footer did not adjust")
 assert(not footer_text():find("new Golex app", 1, true), "app footer leaked into shelves")
 for _, line in ipairs(lines) do
   assert(vim.fn.strdisplaywidth(line) <= panel_width, "reworked shelf view clipped")
@@ -232,15 +238,44 @@ local function input_mapping(bufnr)
   end
 end
 
-local new_shelf = vim.fs.joinpath(root, "extra")
+local original_ui_input = vim.ui.input
+local shelf_prompt
+vim.ui.input = function(options, callback)
+  shelf_prompt = { options = options, callback = callback }
+end
+
+local shelf_name = "extra"
 mapping("Shiny: create in current view").callback()
 local shelf_input = vim.api.nvim_get_current_buf()
 assert(vim.api.nvim_win_get_cursor(state.win)[1] == 10, "new shelf action did not select its input")
-vim.api.nvim_buf_set_lines(shelf_input, 0, -1, false, { new_shelf })
+vim.api.nvim_buf_set_lines(shelf_input, 0, -1, false, { shelf_name })
 vim.api.nvim_exec_autocmds("TextChangedI", { buffer = shelf_input })
 input_mapping(shelf_input).callback()
+local cwd = vim.fs.normalize(vim.uv.cwd()):gsub("[/\\]+$", "")
+local path_prefix = cwd .. package.config:sub(1, 1)
+local named_shelf = path_prefix .. shelf_name
+assert(shelf_prompt.options.prompt == "New shelf path: ", "shelf path popup prompt changed")
+assert(shelf_prompt.options.completion == "dir", "shelf path popup lacks directory completion")
+assert(shelf_prompt.options.default == named_shelf, "shelf name was not placed below the cwd")
+shelf_prompt.callback(named_shelf)
 local shelves = require("shiny.rgolem.shelves")
-assert(shelves.active() == new_shelf, "Golex shelf input did not submit its path")
+assert(shelves.active() == named_shelf, "shelf name popup did not submit its path")
+
+vim.api.nvim_feedkeys("S", "x", false)
+mapping("Shiny: create in current view").callback()
+shelf_input = vim.api.nvim_get_current_buf()
+local full_path = vim.fs.joinpath(root, "full-path")
+vim.api.nvim_buf_set_lines(shelf_input, 0, -1, false, { full_path })
+vim.api.nvim_exec_autocmds("TextChangedI", { buffer = shelf_input })
+input_mapping(shelf_input).callback()
+assert(
+  shelf_prompt.options.default == cwd .. full_path,
+  "typed shelf path was not preserved after the cwd prefix"
+)
+shelf_prompt.callback(full_path)
+assert(shelves.active() == full_path, "edited full shelf path was not selected")
+vim.ui.input = original_ui_input
+
 shelves.select(1)
 state.golex_api.draw()
 
@@ -257,11 +292,11 @@ end
 mapping("Shiny: create in current view").callback()
 local input_buf = vim.api.nvim_get_current_buf()
 assert(vim.bo.filetype == "shiny-input", "Golex N did not open its isolated input row")
-assert(vim.api.nvim_win_get_cursor(state.win)[1] == 4, "Golex N did not highlight its input")
+assert(vim.api.nvim_win_get_cursor(state.win)[1] == 6, "Golex N did not highlight its input")
 assert(not vim.bo[panel_buf].modifiable, "Golex input made the panel buffer modifiable")
 assert(vim.api.nvim_get_current_line() == "golex03", "Golex N did not propose the next name")
 lines = vim.api.nvim_buf_get_lines(panel_buf, 0, -1, false)
-assert(lines[4] == "new Golex app > golex03", "default Golex name was not shown in the row")
+assert(lines[6] == "new Golex app name > golex03", "default Golex name was not shown")
 
 vim.api.nvim_buf_set_lines(input_buf, 0, -1, false, { "broken", "green text" })
 vim.api.nvim_exec_autocmds("TextChangedI", { buffer = input_buf })
@@ -270,13 +305,13 @@ assert(
   "multiline Golex input was not rejected"
 )
 lines = vim.api.nvim_buf_get_lines(panel_buf, 0, -1, false)
-assert(lines[6] == "Golex apps", "Golex input altered protected panel text")
+assert(lines[8] == "Golex apps", "Golex input altered protected panel text")
 vim.api.nvim_buf_set_lines(input_buf, 0, -1, false, { "remember.me" })
 vim.api.nvim_exec_autocmds("TextChangedI", { buffer = input_buf })
 state.golex_edit.finish(false)
 assert(vim.api.nvim_get_current_buf() == panel_buf, "leaving Golex input did not restore the panel")
 assert(
-  vim.api.nvim_buf_get_lines(panel_buf, 3, 4, false)[1] == "new Golex app > remember.me",
+  vim.api.nvim_buf_get_lines(panel_buf, 5, 6, false)[1] == "new Golex app name > remember.me",
   "leaving Golex input lost its edited name"
 )
 

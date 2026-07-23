@@ -315,7 +315,7 @@ assert(find_line(help_lines, "use the selected item"), "Help omitted Enter")
 assert(find_line(help_lines, "stop the selected running app"), "Help omitted guarded stop")
 assert(find_line(help_lines, "default browser"), "Help omitted browser behavior")
 assert(find_line(help_lines, "configured app template"), "Help omitted template behavior")
-assert(find_line(help_lines, "start or resume Golex name editing"), "Help omitted Golex editor")
+assert(find_line(help_lines, "new Golex app or shelf name/path"), "Help omitted Golex editor")
 assert(find_line(help_lines, "delete the selected app or shelf"), "Help omitted Golex delete")
 assert(find_line(help_lines, "running     1"), "Help running count does not match Apps")
 assert(find_line(help_lines, "stopped     0"), "Help stopped count does not match Apps")
@@ -397,10 +397,15 @@ assert(opened_url == "http://127.0.0.1:8000", "selected app URL was not opened")
 vim.api.nvim_feedkeys(vim.keycode("<Tab>"), "x", false)
 local golex_lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
 assert(golex_lines[1]:find("[Golex]", 1, true), "Golex view is missing")
-assert(golex_lines[4] == "new Golex app > ", "Golex editable row changed")
-assert(vim.api.nvim_win_get_cursor(0)[1] == 4, "Golex input row was not selected")
+assert(golex_lines[4] == "Add new Golex app", "Golex creation section is missing")
+assert(golex_lines[6] == "new Golex app name > ", "Golex editable row changed")
+assert(golex_lines[8] == "Golex apps", "Golex app selection section is missing")
+assert(vim.api.nvim_win_get_cursor(0)[1] == 6, "Golex input row was not selected")
 footer_text = helpers.rendered_footer()
-assert(footer_text:find("[Enter] create/open", 1, true), "Golex Enter action is missing")
+assert(
+  footer_text:find("[Enter] open w/ external editor", 1, true),
+  "Golex Enter action is missing"
+)
 assert(
   footer_text:find("[N/i] edit Golex app name", 1, true),
   "Golex name-editor action is missing"
