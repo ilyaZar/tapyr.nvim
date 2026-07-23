@@ -50,11 +50,11 @@ local state = require("shiny.panel").open(root, nil, "golex")
 local panel_buf = state.buf
 local lines = vim.api.nvim_buf_get_lines(panel_buf, 0, -1, false)
 assert(lines[1]:find("[Golex]", 1, true), "native Golex tab did not open")
-assert(lines[4] == "Add new Golex app", "Golex creation is not the first section")
-assert(lines[6] == "new Golex app name > ", "Golex input prompt changed")
-assert(lines[8] == "Golex apps", "Golex app selection section is missing")
-assert(lines[10] == "golex01" and lines[11] == "golex02", "Golex entries were not listed")
-assert(vim.api.nvim_win_get_cursor(state.win)[1] == 6, "Golex input was not selected")
+assert(lines[4] == "Golex apps", "Golex app selection is not the first section")
+assert(lines[6] == "golex01" and lines[7] == "golex02", "Golex entries were not listed")
+assert(lines[9] == "Add new Golex app", "Golex creation section is missing")
+assert(lines[11] == "new Golex app name > ", "Golex input prompt changed")
+assert(vim.api.nvim_win_get_cursor(state.win)[1] == 6, "first Golex app was not selected")
 
 local function footer_text()
   return helpers.rendered_footer(state.win)
@@ -112,7 +112,9 @@ vim.api.nvim_feedkeys("R", "x", false)
 assert(not restarted, "hidden Apps restart remained active in Golex")
 
 vim.api.nvim_feedkeys("j", "x", false)
-assert(vim.api.nvim_win_get_cursor(state.win)[1] == 10, "Golex entry navigation changed")
+assert(vim.api.nvim_win_get_cursor(state.win)[1] == 7, "Golex entry navigation changed")
+vim.api.nvim_feedkeys("k", "x", false)
+assert(vim.api.nvim_win_get_cursor(state.win)[1] == 6, "Golex reverse navigation changed")
 vim.api.nvim_feedkeys(vim.keycode("<CR>"), "x", false)
 assert(vim.bo.filetype == "shiny-dialog", "Golex entry action did not use the shared dialog")
 local dialog_footer = {}
@@ -140,7 +142,7 @@ for _, keymap in ipairs(vim.api.nvim_buf_get_keymap(0, "n")) do
 end
 vim.api.nvim_feedkeys("q", "x", false)
 assert(vim.api.nvim_get_current_buf() == panel_buf, "dialog cancel did not restore Golex")
-assert(vim.api.nvim_win_get_cursor(state.win)[1] == 10, "dialog cancel lost Golex selection")
+assert(vim.api.nvim_win_get_cursor(state.win)[1] == 6, "dialog cancel lost Golex selection")
 
 vim.api.nvim_feedkeys("d", "x", false)
 assert(vim.bo.filetype == "shiny-dialog", "Golex delete did not open its confirmation")
@@ -279,7 +281,6 @@ vim.ui.input = original_ui_input
 shelves.select(1)
 state.golex_api.draw()
 
-vim.api.nvim_feedkeys("j", "x", false)
 assert(not mapping("Shiny: create next Golex app"), "removed Golex n mapping remained active")
 local edit_mapping = assert(mapping("Shiny: edit Golex input"), "Golex i mapping is missing")
 assert(edit_mapping.lhs == "i", "Golex editor does not use the insert-mode key")
@@ -292,11 +293,11 @@ end
 mapping("Shiny: create in current view").callback()
 local input_buf = vim.api.nvim_get_current_buf()
 assert(vim.bo.filetype == "shiny-input", "Golex N did not open its isolated input row")
-assert(vim.api.nvim_win_get_cursor(state.win)[1] == 6, "Golex N did not highlight its input")
+assert(vim.api.nvim_win_get_cursor(state.win)[1] == 11, "Golex N did not highlight its input")
 assert(not vim.bo[panel_buf].modifiable, "Golex input made the panel buffer modifiable")
 assert(vim.api.nvim_get_current_line() == "golex03", "Golex N did not propose the next name")
 lines = vim.api.nvim_buf_get_lines(panel_buf, 0, -1, false)
-assert(lines[6] == "new Golex app name > golex03", "default Golex name was not shown")
+assert(lines[11] == "new Golex app name > golex03", "default Golex name was not shown")
 
 vim.api.nvim_buf_set_lines(input_buf, 0, -1, false, { "broken", "green text" })
 vim.api.nvim_exec_autocmds("TextChangedI", { buffer = input_buf })
@@ -305,13 +306,13 @@ assert(
   "multiline Golex input was not rejected"
 )
 lines = vim.api.nvim_buf_get_lines(panel_buf, 0, -1, false)
-assert(lines[8] == "Golex apps", "Golex input altered protected panel text")
+assert(lines[4] == "Golex apps", "Golex input altered protected panel text")
 vim.api.nvim_buf_set_lines(input_buf, 0, -1, false, { "remember.me" })
 vim.api.nvim_exec_autocmds("TextChangedI", { buffer = input_buf })
 state.golex_edit.finish(false)
 assert(vim.api.nvim_get_current_buf() == panel_buf, "leaving Golex input did not restore the panel")
 assert(
-  vim.api.nvim_buf_get_lines(panel_buf, 5, 6, false)[1] == "new Golex app name > remember.me",
+  vim.api.nvim_buf_get_lines(panel_buf, 10, 11, false)[1] == "new Golex app name > remember.me",
   "leaving Golex input lost its edited name"
 )
 
