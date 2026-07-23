@@ -15,7 +15,7 @@ function name.validate(value)
   end
   if not value:match("^[A-Za-z][A-Za-z0-9.]+$") or value:sub(-1) == "." then
     return nil,
-      "Use 2+ characters: an ASCII letter first, then letters, numbers, or dots; no trailing dot"
+      "Use 2+ characters: an ASCII letter first, then ASCII letters, numbers, or dots; no spaces or trailing dot"
   end
   return value
 end

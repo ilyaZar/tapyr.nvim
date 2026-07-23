@@ -34,6 +34,8 @@ assert(name.resolve("my..app") == "my..app", "R-compatible consecutive dots were
 assert(name.resolve("a") == nil, "single-character package name was accepted")
 assert(name.resolve("../escape") == nil, "path traversal was accepted")
 assert(name.resolve("bad_name") == nil, "invalid R package name was accepted")
+local _, space_error = name.resolve("bad name")
+assert(space_error and space_error:find("no spaces", 1, true), "space rule is missing")
 assert(name.resolve(".hidden") == nil, "hidden directory name was accepted")
 assert(name.resolve("bad.") == nil, "trailing dot was accepted")
 assert(name.resolve("mýapp") == nil, "non-ASCII package name was accepted")

@@ -221,12 +221,12 @@ An invalid Enter submission keeps the editor open for correction. The isolated
 one-line editor cannot modify the rest of the panel.
 
 Custom names must have at least two characters, start with an ASCII letter,
-contain only ASCII letters, digits, or dots, and not end with a dot. Numeric
-input becomes golexNN.
+contain only ASCII letters, digits, or dots, contain no spaces, and not end
+with a dot. Numeric input becomes golexNN.
 
 Enter on a project opens the Open/Recreate dialog. d asks before recursively
-deleting it. S opens shelves, where the editable row adds a directory and
-Enter switches the active shelf.
+deleting it. S opens shelves, where Shelf selection appears before a separate
+Add new shelf section. Enter switches the active shelf.
 
 Deleting a non-default shelf recursively deletes its directory and every
 project below it. The configured default shelf cannot be deleted. Golex apps
